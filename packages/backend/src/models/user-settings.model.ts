@@ -10,6 +10,7 @@ import {
   MAX_AI_CONNECTIONS,
   MAX_CATEGORY_MAPPING_PRESETS,
   NOTIFICATION_TYPES,
+  PAYMENT_TYPES,
   RecordId,
   TRANSACTION_OPTIONAL_FIELDS,
   endpointsTypes,
@@ -156,6 +157,8 @@ const ZodTransactionsTableSettingsSchema = z.object({
   desktopView: z.enum(['list', 'table']).optional(),
   /** Filters added on top of the always-visible ones. Plain strings, like column ids. */
   extraFilters: z.array(z.string()).optional(),
+  /** Shades non-editable cells on every row instead of only the hovered one. */
+  alwaysShowLockedCells: z.boolean().optional(),
 });
 
 const ZodInvestmentTransactionsTableSettingsSchema = z.object({
@@ -175,6 +178,8 @@ const ZodTransactionFormSettingsSchema = z.object({
   optionalFields: z.array(z.enum(TRANSACTION_OPTIONAL_FIELDS)).optional(),
   /** Whether the transaction form may load map tiles and address search from OpenStreetMap. */
   mapPicker: z.boolean().optional(),
+  /** Payment type preselected on new transactions. Credit card when unset. */
+  defaultPaymentType: z.enum(PAYMENT_TYPES).optional(),
 });
 
 // UI-state preferences (table layouts, view modes). Functional settings keep
@@ -364,6 +369,7 @@ export const ZodSettingsPatchSchema = z.object({
           mobileView: z.enum(['list', 'table']).optional(),
           desktopView: z.enum(['list', 'table']).optional(),
           extraFilters: z.array(z.string()).optional(),
+          alwaysShowLockedCells: z.boolean().optional(),
         })
         .optional(),
       transactionsList: z
@@ -375,6 +381,7 @@ export const ZodSettingsPatchSchema = z.object({
         .object({
           optionalFields: z.array(z.enum(TRANSACTION_OPTIONAL_FIELDS)).optional(),
           mapPicker: z.boolean().optional(),
+          defaultPaymentType: z.enum(PAYMENT_TYPES).optional(),
         })
         .optional(),
       investmentTransactionsTable: z

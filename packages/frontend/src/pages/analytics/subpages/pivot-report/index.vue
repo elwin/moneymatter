@@ -69,6 +69,7 @@
 
 <script setup lang="ts">
 import type { SavedPivotView, SavedPivotViewConfig } from '@/api/user-settings';
+import { randomId } from '@/common/utils/random-id';
 import Button from '@/components/lib/ui/button/Button.vue';
 import { useNotificationCenter } from '@/components/notification-center';
 import { useUserSettings } from '@/composable/data-queries/user-settings';
@@ -181,7 +182,7 @@ const applySavedConfig = (config: SavedPivotViewConfig) => {
 
 const onSaveView = async ({ name }: { name: string }) => {
   try {
-    const newView: SavedPivotView = { id: crypto.randomUUID(), name, config: currentSavedConfig.value };
+    const newView: SavedPivotView = { id: randomId(), name, config: currentSavedConfig.value };
     await patchAsync({ savedPivotViews: [...savedViews.value, newView] });
     addSuccessNotification(t('pivotReport.savedViews.savedToast'));
   } catch {

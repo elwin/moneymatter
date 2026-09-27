@@ -1,6 +1,12 @@
 import { api } from '@/api/_api';
 import type { SupportedLocale } from '@bt/shared/i18n/locales';
-import type { CategoryMappingPreset, FireSettings, TransactionOptionalField, endpointsTypes } from '@bt/shared/types';
+import type {
+  CategoryMappingPreset,
+  FireSettings,
+  PAYMENT_TYPES,
+  TransactionOptionalField,
+  endpointsTypes,
+} from '@bt/shared/types';
 
 export interface DashboardWidgetConfig {
   widgetId: string;
@@ -32,6 +38,8 @@ interface TransactionsTableSettings {
    * always-visible ones). Unknown ids are dropped client-side on read.
    */
   extraFilters?: string[];
+  /** Shades non-editable cells on every row instead of only the hovered one. */
+  alwaysShowLockedCells?: boolean;
 }
 
 interface TransactionsListSettings {
@@ -47,6 +55,8 @@ interface TransactionFormSettings {
   optionalFields?: TransactionOptionalField[];
   /** Whether the transaction form may load map tiles and address search from OpenStreetMap. */
   mapPicker?: boolean;
+  /** Payment type preselected on new transactions. Credit card when unset. */
+  defaultPaymentType?: PAYMENT_TYPES;
 }
 
 interface InvestmentTransactionsTableSettings {
