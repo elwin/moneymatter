@@ -43,7 +43,11 @@ const { format } = useDateLocale();
 const nextIndex = computed(() => props.milestones.findIndex((m) => !m.reached));
 
 const describe = ({ milestone }: { milestone: FireMilestone }) => {
-  if (milestone.reached) return t('analytics.fire.milestones.reached');
+  if (milestone.reached) {
+    return milestone.date === null
+      ? t('analytics.fire.milestones.reached')
+      : t('analytics.fire.milestones.reachedOn', { date: format(milestone.date, 'LLL yyyy') });
+  }
   if (milestone.hitMonth === null || milestone.date === null) return t('analytics.fire.notWithinHorizon');
   return t('analytics.fire.milestones.eta', {
     duration: formatDuration({ months: milestone.hitMonth, t }),

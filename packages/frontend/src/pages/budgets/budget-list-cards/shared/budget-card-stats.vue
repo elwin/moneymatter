@@ -7,7 +7,7 @@ defineProps<{
   balance: number;
 }>();
 
-const { formatBaseCurrency } = useFormatCurrency();
+const { formatCompactBaseCurrency } = useFormatCurrency();
 </script>
 
 <template>
@@ -16,16 +16,16 @@ const { formatBaseCurrency } = useFormatCurrency();
       <div class="text-muted-foreground text-[10px] tracking-wider uppercase">
         {{ $t('budgets.list.income') }}
       </div>
-      <div class="text-success-text text-sm font-medium tabular-nums">
-        {{ formatBaseCurrency(income) }}
+      <div class="text-success-text text-sm font-medium whitespace-nowrap tabular-nums">
+        {{ formatCompactBaseCurrency({ amount: income }) }}
       </div>
     </div>
     <div>
       <div class="text-muted-foreground text-[10px] tracking-wider uppercase">
         {{ $t('budgets.list.expenses') }}
       </div>
-      <div class="text-app-expense-color text-sm font-medium tabular-nums">
-        {{ formatBaseCurrency(expense) }}
+      <div class="text-app-expense-color text-sm font-medium whitespace-nowrap tabular-nums">
+        {{ formatCompactBaseCurrency({ amount: expense }) }}
       </div>
     </div>
     <div>
@@ -33,10 +33,10 @@ const { formatBaseCurrency } = useFormatCurrency();
         {{ $t('budgets.list.net') }}
       </div>
       <div
-        class="text-sm font-medium tabular-nums"
+        class="text-sm font-medium whitespace-nowrap tabular-nums"
         :class="balance >= 0 ? 'text-success-text' : 'text-app-expense-color'"
       >
-        {{ formatBaseCurrency(balance) }}
+        {{ formatCompactBaseCurrency({ amount: balance }) }}
       </div>
     </div>
   </div>

@@ -240,8 +240,9 @@ Set status = SYNCING
        ↓
 Fetch all transactions (paginated on continuation_key until the ASPSP
 stops returning one; an incremental sync starts at the latest stored
-transaction or the oldest payment still pending on the previous sync,
-whichever is earlier; an initial sync also negotiates the lookback window
+transaction, the oldest payment still pending on the previous sync, or
+the oldest stored pending row from the last 14 days, whichever is
+earliest; an initial sync also negotiates the lookback window
 by retrying 1095 → 730 → 365 → 90 days on date-range rejections)
        ↓
 Drop PDNG/HOLD payloads unless the user setting
@@ -258,7 +259,8 @@ For each transaction:
   • Matched, stored booked + incoming pre-booking → no writes (stale re-send)
   • Matched → re-anchor originalId, merge externalData (pendingHash +
     merchantName backfill), flip pre-booking → BOOK, re-stamp time when the
-    flip changed it, refresh the note while it is still sync-generated
+    flip changed it, refresh the note while it is still sync-generated;
+    on that flip the booked payload's direction overwrites the row's type
   • Unmatched → create Transaction record
        ↓
 Update account balance
@@ -271,7 +273,7 @@ Set status = COMPLETED
 1. **entry_reference** — the ASPSP promises it is unique and immutable per account
 2. **originalId** — the stored hash; the steady state when the bank returns stable fields. It also matches `externalData.pendingHash`, the hash a row carried during its pending life, so a `PDNG` payload the ASPSP re-sends after booking resolves back onto the booked row instead of creating a duplicate
 3. **IBAN fingerprint** — same amount/currency/type within ±2 days, same counterparty IBAN, and only against rows that carry no stored entry_reference
-4. **Pending upgrade** — a booked payload adopts a stored `PDNG`/`HOLD` row with the same amount/currency/type dated up to 14 days before the booked payload or 2 days after it (transfers can sit pending well over a week; a pending copy never trails its booking by more than date drift). The IBAN gate is conditional: when the incoming booked payload carries a counterparty IBAN, candidates carrying the same one win, IBAN-less candidates dated within 5 days are the fallback (ASPSPs often omit the counterparty on the pending payload and fill it at booking; the short window keeps an unrelated same-amount card reservation from being taken as the transfer's pending copy), and a candidate with a different IBAN is never matched; when the payload carries none — the card-purchase case — no IBAN filtering happens. The candidate pool excludes rows with a `transferId` or `refundLinked`, and rows with an entry_reference unless the incoming payload carries one too. The whole tier is skipped when a single pre-sync count says the account holds no pre-booking rows at all; that pre-check re-arms mid-run as soon as this run stores one
+4. **Pending upgrade** — a booked payload adopts a stored `PDNG`/`HOLD` row with the same amount/currency/type dated up to 14 days before the booked payload or 2 days after it (transfers can sit pending well over a week; a pending copy never trails its booking by more than date drift). The IBAN gate is conditional: when the incoming booked payload carries a counterparty IBAN, candidates carrying the same one win, IBAN-less candidates dated within 5 days are the fallback (ASPSPs often omit the counterparty on the pending payload and fill it at booking; the short window keeps an unrelated same-amount card reservation from being taken as the transfer's pending copy), and a candidate with a different IBAN is never matched; when the payload carries none — the card-purchase case — no IBAN filtering happens. The candidate pool excludes rows with a `transferId` or `refundLinked`, and rows with an entry_reference unless the incoming payload carries one too. The whole tier is skipped when a single pre-sync count says the account holds no pre-booking rows at all; that pre-check re-arms mid-run as soon as this run stores one. When no same-type row qualifies, the same pool is searched with the opposite type, since some ASPSPs flag a pending payment with the wrong direction; such a row is adopted only when it is dated within ±2 days of the booked payload and its raw payload names the same counterparty account on the same creditor/debtor side as the booked payload (own account ids ignored), which keeps a purchase and its refund apart
 
 Tier 3 runs before tier 4 because IBAN equality is the stronger signal — an incoming transfer lands on a row sharing its IBAN before tier 4 falls back to an IBAN-less pending.
 

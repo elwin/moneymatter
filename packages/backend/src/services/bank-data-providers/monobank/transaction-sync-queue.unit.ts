@@ -71,7 +71,7 @@ const queueEmptyWindow = (accountId: RecordId) =>
 beforeEach(() => {
   jest.clearAllMocks();
   incrMock.mockResolvedValue(1 as never);
-  runPendingLinkAbsorbMock.mockResolvedValue(0);
+  runPendingLinkAbsorbMock.mockResolvedValue({});
   setAccountSyncStatusMock.mockResolvedValue(undefined);
   connectionsUpdateMock.mockResolvedValue([1] as never);
 });

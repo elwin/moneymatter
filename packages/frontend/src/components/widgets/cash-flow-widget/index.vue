@@ -6,6 +6,7 @@ import ExcludeCategoriesMenu from '@/components/common/category-exclusions/exclu
 import ExcludedCountBadge from '@/components/common/category-exclusions/excluded-count-badge.vue';
 import { useCategoryExclusionsConfig } from '@/components/common/category-exclusions/use-category-exclusions-config';
 import { ChartTooltipHeader } from '@/components/common/charts/chart-tooltip';
+import FitAmount from '@/components/common/fit-amount.vue';
 import ResponsiveTooltip from '@/components/common/responsive-tooltip.vue';
 import { buttonVariants } from '@/components/lib/ui/button';
 import { DesktopOnlyTooltip } from '@/components/lib/ui/tooltip';
@@ -239,9 +240,7 @@ const trendBars = computed(() => {
             <div class="text-muted-foreground mb-1 text-[11px] font-medium tracking-wider uppercase">
               {{ $t('dashboard.widgets.cashFlow.income') }}
             </div>
-            <div class="text-app-income-color text-amount text-sm">
-              {{ formatBaseCurrency(animatedIncome) }}
-            </div>
+            <FitAmount :value="animatedIncome" :target="income" class="text-app-income-color text-amount text-sm" />
           </div>
 
           <!-- Expenses -->
@@ -249,9 +248,11 @@ const trendBars = computed(() => {
             <div class="text-muted-foreground mb-1 text-[11px] font-medium tracking-wider uppercase">
               {{ $t('dashboard.widgets.cashFlow.expenses') }}
             </div>
-            <div class="text-app-expense-color text-amount text-sm">
-              {{ formatBaseCurrency(animatedExpenses) }}
-            </div>
+            <FitAmount
+              :value="animatedExpenses"
+              :target="expenses"
+              class="text-app-expense-color text-amount text-sm"
+            />
           </div>
 
           <!-- Savings rate -->

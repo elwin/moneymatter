@@ -289,14 +289,33 @@ export const buildFirePlan = ({
       ) ?? null)
     : null;
 
+  const toPoints = ({ series }: { series: number[] }) => series.map((value, m) => ({ date: addMonths(now, m), value }));
+  const nominalHistory = points.map((point) => ({
+    date: parseISO(point.date),
+    nominal: sum(includedValues({ buckets: toFireBuckets({ point }), settings })),
+  }));
+  // A leading flat run is the balance before any tracked activity (e.g. an initial balance), not history.
+  const historyStart = nominalHistory.findIndex(({ nominal }, i) => nominal !== nominalHistory[i + 1]?.nominal);
+  const chartHistory = nominalHistory.slice(Math.max(historyStart, 0)).map(({ date, nominal }) => ({
+    date,
+    value: nominal * Math.pow(1 + settings.effectiveInflationPct / 100, differenceInCalendarMonths(now, date) / 12),
+  }));
+
+  // A series that already starts at or above the amount crossed it before history begins, so no date.
+  const crossedAt = ({ amount }: { amount: number }): Date | null => {
+    const idx = chartHistory.findIndex(({ value }) => value >= amount);
+    return idx > 0 ? chartHistory[idx]!.date : null;
+  };
+
   const milestones: FireMilestone[] = milestoneDefs.map(({ pct, key, amount }) => {
     const hitMonth = hitMonthOf({ key });
+    const reached = isReached({ balance, target: amount });
     return {
       pct,
       amount,
       hitMonth,
-      date: dateOf({ months: hitMonth }),
-      reached: isReached({ balance, target: amount }),
+      date: reached ? crossedAt({ amount }) : dateOf({ months: hitMonth }),
+      reached,
     };
   });
 
@@ -340,18 +359,6 @@ export const buildFirePlan = ({
       : chip({ key: 'barista', amount: targets.barista, hitMonth: hitMonthOf({ key: 'barista' }) }),
     coastChip(),
   ];
-
-  const toPoints = ({ series }: { series: number[] }) => series.map((value, m) => ({ date: addMonths(now, m), value }));
-  const nominalHistory = points.map((point) => ({
-    date: parseISO(point.date),
-    nominal: sum(includedValues({ buckets: toFireBuckets({ point }), settings })),
-  }));
-  // A leading flat run is the balance before any tracked activity (e.g. an initial balance), not history.
-  const historyStart = nominalHistory.findIndex(({ nominal }, i) => nominal !== nominalHistory[i + 1]?.nominal);
-  const chartHistory = nominalHistory.slice(Math.max(historyStart, 0)).map(({ date, nominal }) => ({
-    date,
-    value: nominal * Math.pow(1 + settings.effectiveInflationPct / 100, differenceInCalendarMonths(now, date) / 12),
-  }));
 
   return {
     status: isFi ? 'reached' : targetHit === null ? 'unreachable' : 'ready',

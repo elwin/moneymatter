@@ -1,7 +1,13 @@
 import { TRANSACTION_TYPES } from '@bt/shared/types';
 import { describe, expect, it } from '@jest/globals';
 
-import { filterIbanCompatible, pickNearestByDate } from './candidate-selection';
+import {
+  type AccountIdentification,
+  CreditDebitIndicator,
+  type EnableBankingTransaction,
+  TransactionStatus,
+} from '../types';
+import { filterIbanCompatible, haveSameParties, pickNearestByDate } from './candidate-selection';
 
 const IBAN = 'FR7630006000011234567890189';
 const OTHER_IBAN = 'DE89370400440532013000';
@@ -167,5 +173,89 @@ describe('pickNearestByDate', () => {
 
   it('returns null when there are no candidates', () => {
     expect(pickNearestByDate({ candidates: [], date: new Date('2026-05-04T00:00:00.000Z') })).toBeNull();
+  });
+});
+
+const OWN_IBAN = 'SE3550000000054910000003';
+const PAYEE_BBAN = '58628082';
+
+// Raw ASPSP payloads carry `iban: null` next to a BBAN, which the type does not model.
+function bban({ identification }: { identification: string }): AccountIdentification {
+  return { iban: null, other: { scheme_name: 'BBAN', identification } } as unknown as AccountIdentification;
+}
+
+function rawTx({
+  creditorAccount,
+  debtorAccount,
+  creditDebitIndicator = CreditDebitIndicator.DBIT,
+}: {
+  creditorAccount?: AccountIdentification;
+  debtorAccount?: AccountIdentification;
+  creditDebitIndicator?: CreditDebitIndicator;
+}): EnableBankingTransaction {
+  return {
+    transaction_amount: { amount: '140.00', currency: 'EUR' },
+    credit_debit_indicator: creditDebitIndicator,
+    status: TransactionStatus.BOOK,
+    creditor_account: creditorAccount,
+    debtor_account: debtorAccount,
+  };
+}
+
+describe('haveSameParties', () => {
+  it('matches payloads naming the same BBAN creditor, whatever the direction flag says', () => {
+    const pending = rawTx({
+      creditorAccount: bban({ identification: PAYEE_BBAN }),
+      creditDebitIndicator: CreditDebitIndicator.CRDT,
+    });
+    const booked = rawTx({
+      creditorAccount: bban({ identification: PAYEE_BBAN }),
+      debtorAccount: { iban: OWN_IBAN },
+    });
+
+    expect(haveSameParties({ incoming: booked, stored: pending, ownAccountIds: [OWN_IBAN] })).toBe(true);
+  });
+
+  it('rejects a purchase and a refund, whose parties swap sides', () => {
+    const purchase = rawTx({ creditorAccount: { iban: IBAN }, debtorAccount: { iban: OWN_IBAN } });
+    const refund = rawTx({
+      creditorAccount: { iban: OWN_IBAN },
+      debtorAccount: { iban: IBAN },
+      creditDebitIndicator: CreditDebitIndicator.CRDT,
+    });
+
+    expect(haveSameParties({ incoming: refund, stored: purchase, ownAccountIds: [OWN_IBAN] })).toBe(false);
+  });
+
+  it('rejects payloads naming different creditors', () => {
+    const stored = rawTx({ creditorAccount: bban({ identification: PAYEE_BBAN }) });
+    const incoming = rawTx({ creditorAccount: bban({ identification: '11112222' }) });
+
+    expect(haveSameParties({ incoming, stored, ownAccountIds: [OWN_IBAN] })).toBe(false);
+  });
+
+  it('does not treat the own account as a shared party', () => {
+    const stored = rawTx({ debtorAccount: { iban: OWN_IBAN } });
+    const incoming = rawTx({ debtorAccount: { iban: OWN_IBAN } });
+
+    expect(haveSameParties({ incoming, stored, ownAccountIds: [OWN_IBAN] })).toBe(false);
+  });
+
+  it('rejects payloads without any identifiers', () => {
+    expect(haveSameParties({ incoming: rawTx({}), stored: rawTx({}), ownAccountIds: [] })).toBe(false);
+  });
+
+  it('matches on one side when the other side is absent on one payload', () => {
+    const stored = rawTx({ creditorAccount: { iban: IBAN } });
+    const incoming = rawTx({ creditorAccount: { iban: IBAN }, debtorAccount: { iban: OTHER_IBAN } });
+
+    expect(haveSameParties({ incoming, stored, ownAccountIds: [OWN_IBAN] })).toBe(true);
+  });
+
+  it('ignores whitespace and case in identifiers', () => {
+    const stored = rawTx({ creditorAccount: { iban: 'fr76 3000 6000 0112 3456 7890 189' } });
+    const incoming = rawTx({ creditorAccount: { iban: IBAN }, debtorAccount: { iban: OWN_IBAN } });
+
+    expect(haveSameParties({ incoming, stored, ownAccountIds: ['se35 5000 0000 0549 1000 0003'] })).toBe(true);
   });
 });

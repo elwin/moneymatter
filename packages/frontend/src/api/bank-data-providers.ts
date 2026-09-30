@@ -89,6 +89,7 @@ export interface AvailableAccount {
   name: string;
   type: string;
   balance: number;
+  creditLimit: number;
   currency: string;
   metadata?: Record<string, unknown>;
 }

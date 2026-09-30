@@ -3,8 +3,8 @@ import type { DashboardWidgetConfig } from '@/api/user-settings';
 import { Button } from '@/components/lib/ui/button';
 import { DesktopOnlyTooltip } from '@/components/lib/ui/tooltip';
 import { useUserSettings } from '@/composable/data-queries/user-settings';
-import { type FireWarning, UNREACHABLE_PMT_MONTHS } from '@/composable/fire/build-fire-plan';
-import { displayProgressPct, useFormatFireCompact } from '@/composable/fire/fire-display';
+import { type FireMilestone, type FireWarning, UNREACHABLE_PMT_MONTHS } from '@/composable/fire/build-fire-plan';
+import { displayProgressPct } from '@/composable/fire/fire-display';
 import { monthsToLabel } from '@/composable/fire/fire-math';
 import { useFirePlan, useResolvedFireSettings } from '@/composable/fire/use-fire-plan';
 import { useFormatCurrency } from '@/composable/formatters';
@@ -30,8 +30,7 @@ const LEDGER_ROW_CLASS = 'border-border flex items-baseline justify-between gap-
 
 const { t } = useI18n();
 const { format } = useDateLocale();
-const { formatWholeBaseCurrency } = useFormatCurrency();
-const compact = useFormatFireCompact();
+const { formatWholeBaseCurrency, formatCompactBaseCurrency: compact } = useFormatCurrency();
 
 const widgetConfigRef = inject<Ref<DashboardWidgetConfig> | null>('dashboard-widget-config', null);
 const isNumbers = computed(() => widgetConfigRef?.value?.config?.style === 'numbers');
@@ -119,14 +118,19 @@ const nextMilestone = computed(() => {
 const reachedMilestones = computed(() => plan.value.milestones.filter((m) => m.reached).length);
 const isCoastReached = computed(() => plan.value.chips.some((c) => c.key === 'coast' && c.status === 'reached'));
 
+const milestoneMonth = ({ m }: { m: FireMilestone }) => {
+  if (m.date !== null) return format(m.date, 'LLL yyyy');
+  return m.reached ? t('widgets.fireProgress.reached') : '—';
+};
+
 const milestoneNodes = computed(() =>
   plan.value.milestones.map((m) => ({
     pct: m.pct,
     reached: m.reached,
     label: m.pct === 100 ? targetName.value : `${m.pct}%`,
-    month: m.date === null ? '—' : format(m.date, 'LLL yyyy'),
+    month: milestoneMonth({ m }),
     eta:
-      m.hitMonth === null
+      m.reached || m.hitMonth === null
         ? null
         : t('widgets.fireProgress.milestoneIn', { pct: m.pct, duration: formatDuration({ months: m.hitMonth, t }) }),
   })),
@@ -447,7 +451,7 @@ const [DefineSkeletonDots, ReuseSkeletonDots] = createReusableTemplate();
       aria-busy="true"
     >
       <div class="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-4 @sm:gap-5 @3xl:contents">
-        <div class="border-muted size-26 rounded-full border-[10px] @sm:size-36 @3xl:size-44" />
+        <div class="border-muted size-26 rounded-full border-10 @sm:size-36 @3xl:size-44" />
         <div class="flex min-w-0 flex-col gap-3">
           <div class="flex flex-col gap-1">
             <div class="bg-muted my-0.5 h-3 w-24 rounded" />

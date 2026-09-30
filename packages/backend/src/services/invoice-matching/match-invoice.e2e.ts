@@ -8,6 +8,7 @@ import {
 } from '@bt/shared/types';
 import { afterEach, beforeEach, describe, expect, it } from '@jest/globals';
 import { SERVER_MODELS } from '@services/ai/resolution-ladder';
+import { STATEMENT_PDF_FIXTURES, readStatementPdfFixture } from '@tests/fixtures/statement-parser-fixtures';
 import * as helpers from '@tests/helpers';
 import { useSelfHostWithoutServerAiKeys } from '@tests/helpers/ai-test-env';
 import { createFirstConnection } from '@tests/helpers/user-settings';
@@ -16,12 +17,18 @@ import {
   CUSTOM_ENDPOINT_MODEL,
   getCustomEndpointContentMock,
   getCustomEndpointUnsupportedInputMock,
+  getCustomEndpointVllmMock,
 } from '@tests/mocks/openai-compatible/mock-api';
+import fs from 'node:fs';
+import path from 'node:path';
 
 /** Smallest valid 1x1 PNG; the endpoint identifies the upload by its magic bytes. */
 const PNG_BYTES = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
   'base64',
+);
+const TEXT_INVOICE_PDF = fs.readFileSync(
+  path.resolve(__dirname, '../../tests/fixtures/invoice-matching/text-invoice.pdf'),
 );
 const SVG_BYTES = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><text>hi</text></svg>', 'utf8');
 
@@ -268,6 +275,50 @@ describe('Invoice matching', () => {
       expect(result.errorMessage).toMatch(/no endpoints found that support image input/i);
       const connections = await helpers.getAiConnections({ raw: true });
       expect(connections.find(({ id }) => id === connection.id)).toMatchObject({ status: 'valid' });
+    });
+
+    it('reads a PDF through an OpenAI-compatible endpoint that takes no file parts', async () => {
+      await createFirstConnection();
+      const bodies: string[] = [];
+      global.mswMockServer.use(
+        getCustomEndpointVllmMock({ content: invoiceAnswer(), onBody: (body) => bodies.push(body) }),
+      );
+
+      const result = await helpers.matchInvoice({ file: TEXT_INVOICE_PDF });
+
+      expect(result.statusCode).toBe(200);
+      expect(result.response!.invoice.vendorName).toBe(VENDOR_NAME);
+      expect(bodies.join('')).toContain('Acme Cloud Services billed to Northwind Studio');
+    });
+
+    it('sends a scanned PDF to an OpenAI-compatible endpoint as page images', async () => {
+      await createFirstConnection();
+      const bodies: string[] = [];
+      global.mswMockServer.use(
+        getCustomEndpointVllmMock({ content: invoiceAnswer(), onBody: (body) => bodies.push(body) }),
+      );
+
+      const result = await helpers.matchInvoice({
+        file: readStatementPdfFixture({ file: STATEMENT_PDF_FIXTURES.noTextLayer }),
+      });
+
+      expect(result.statusCode).toBe(200);
+      expect(result.response!.invoice.vendorName).toBe(VENDOR_NAME);
+      expect(bodies.join('')).toContain('data:image/png;base64,');
+    });
+
+    it('asks for an image when a PDF sent to an OpenAI-compatible endpoint is password-protected', async () => {
+      await createFirstConnection();
+      let calls = 0;
+      global.mswMockServer.use(getCustomEndpointVllmMock({ content: invoiceAnswer(), onBody: () => calls++ }));
+
+      const result = await helpers.matchInvoice({
+        file: readStatementPdfFixture({ file: STATEMENT_PDF_FIXTURES.encrypted }),
+      });
+
+      expect(result.statusCode).toBe(422);
+      expect(result.errorMessage).toMatch(/image/i);
+      expect(calls).toBe(0);
     });
 
     it.each(['http://acme.test/42', 'javascript:alert(1)'])('drops the invoice link when it is %s', async (link) => {
@@ -570,6 +621,17 @@ describe('Invoice matching', () => {
 
       expect((await upload()).statusCode).toBe(402);
       expect(await usedTries()).toBe(TRIAL_LIMIT);
+    });
+
+    it('sends a PDF to a native provider as the file itself, not its text', async () => {
+      await helpers.setUserBilling({ plan: PLANS.essential });
+      mockOperatorAnswer({ content: invoiceAnswer() });
+
+      const result = await helpers.matchInvoice({
+        file: readStatementPdfFixture({ file: STATEMENT_PDF_FIXTURES.encrypted }),
+      });
+
+      expect(result.statusCode).toBe(200);
     });
 
     it('gives an early adopter the same free uploads', async () => {

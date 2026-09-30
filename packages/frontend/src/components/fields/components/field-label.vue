@@ -1,5 +1,5 @@
 <template>
-  <component :is="onlyTemplate ? 'div' : 'label'" class="field-label">
+  <component :is="onlyTemplate ? 'div' : 'label'" class="field-label min-w-0">
     <template v-if="label">
       <div class="text-muted-foreground mb-1 flex items-center justify-between text-[13px]/[1.3] font-medium">
         <span class="flex items-center gap-1.5">

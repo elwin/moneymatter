@@ -181,7 +181,6 @@ export const VUE_QUERY_CACHE_KEYS = Object.freeze({
   subscriptionsList: [transactionChange, 'subscriptions-list'] as const,
   subscriptionDetails: [transactionChange, 'subscription-details'] as const,
   subscriptionsSummary: [transactionChange, 'subscriptions-summary'] as const,
-  widgetSubscriptionsUpcoming: [transactionChange, 'widget-subscriptions-upcoming'] as const,
   recordsUpcomingPayments: [transactionChange, 'records-upcoming-payments'] as const,
   subscriptionCandidates: ['subscription-candidates'] as const,
 
@@ -230,6 +229,9 @@ export const VUE_QUERY_CACHE_KEYS = Object.freeze({
   aiCategorizationHistory: [transactionChange, 'ai-categorization-history'] as const,
   // Callers append the run's `categorizedAt` stamp, so each run caches separately.
   aiCategorizationRunTransactions: [transactionChange, 'ai-categorization-run-transactions'] as const,
+
+  reconciliationStuckPending: [transactionChange, 'reconciliation-stuck-pending'] as const,
+  reconciliationHistory: [transactionChange, 'reconciliation-history'] as const,
 
   // A completed import creates transactions, so the transactionChange invalidation
   // refreshes the batch list alongside everything else it creates/moves.

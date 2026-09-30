@@ -1,11 +1,9 @@
 import { api } from '@/api/_api';
 import type {
-  EntityLogoFields,
   RemindBeforePreset,
   SubscriptionModel,
   SubscriptionPeriodModel,
   TransactionModel,
-  TRANSACTION_TYPES,
 } from '@bt/shared/types';
 
 /** Minimal open-period shape the list exposes for the "Due in N days" chip + quick pay. */
@@ -138,28 +136,6 @@ export const unlinkTransactionsFromSubscription = async ({
 
 export const loadSuggestedMatches = async ({ id }: { id: string }): Promise<TransactionModel[]> => {
   return api.get(`/subscriptions/${id}/suggest-matches`);
-};
-
-interface UpcomingPayment extends EntityLogoFields {
-  subscriptionId: string;
-  subscriptionName: string;
-  expectedAmount: number;
-  expectedCurrencyCode: string | null;
-  transactionType: TRANSACTION_TYPES;
-  nextPaymentDate: string | null;
-  frequency: string;
-  categoryName: string | null;
-  categoryColor: string | null;
-}
-
-export const loadUpcomingPayments = async ({ limit, type }: { limit?: number; type?: string } = {}): Promise<
-  UpcomingPayment[]
-> => {
-  const query: Record<string, string> = {};
-  if (limit !== undefined) query.limit = String(limit);
-  if (type) query.type = type;
-
-  return api.get('/subscriptions/upcoming', query);
 };
 
 export const INCOME_LOOKBACK_MONTHS_OPTIONS = [1, 3, 6, 12] as const;

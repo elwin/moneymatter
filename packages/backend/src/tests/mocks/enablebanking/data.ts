@@ -266,6 +266,13 @@ export interface FixedTransaction {
    * or `null` to omit the counterparty account entirely the way card purchases do.
    */
   counterpartyIban?: string | null;
+  /** Counterparty identified by a domestic BBAN (e.g. a Swedish bankgiro) instead of an IBAN. */
+  counterpartyBban?: string;
+  /**
+   * Overrides only the direction flag; the parties stay laid out by `isExpense`.
+   * Mirrors ASPSPs that send a pending payload contradicting its own parties.
+   */
+  creditDebitIndicator?: 'CRDT' | 'DBIT';
   /** Optional override for remittance_information lines. */
   remittanceInformation?: string[];
   /** Enable Banking transaction status. Defaults to BOOK; use PDNG for pending card authorisations. */
@@ -332,7 +339,7 @@ export const getMockedTransactions = (accountId: string, count: number = 10) => 
           amount: ft.amount,
           currency: ft.currency,
         },
-        credit_debit_indicator: ft.isExpense ? 'DBIT' : 'CRDT',
+        credit_debit_indicator: ft.creditDebitIndicator ?? (ft.isExpense ? 'DBIT' : 'CRDT'),
         remittance_information: ft.remittanceInformation || ['Test transaction'],
         debtor: { name: ft.isExpense ? 'John Doe' : 'Test Company' },
         creditor: { name: ft.isExpense ? 'Test Company' : 'John Doe' },
@@ -350,7 +357,9 @@ export const getMockedTransactions = (accountId: string, count: number = 10) => 
       const ownAccountField = ft.isExpense ? 'debtor_account' : 'creditor_account';
       const counterpartyField = ft.isExpense ? 'creditor_account' : 'debtor_account';
       tx[ownAccountField] = { iban: ownIban };
-      if (counterpartyIban) {
+      if (ft.counterpartyBban) {
+        tx[counterpartyField] = { iban: null, other: { scheme_name: 'BBAN', identification: ft.counterpartyBban } };
+      } else if (counterpartyIban) {
         tx[counterpartyField] = { iban: counterpartyIban };
       }
 

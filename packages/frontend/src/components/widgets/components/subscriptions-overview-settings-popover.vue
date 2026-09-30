@@ -45,6 +45,13 @@
                 </span>
                 <ChevronRightIcon class="text-muted-foreground size-4" />
               </button>
+
+              <div class="flex items-center justify-between gap-2 rounded-md px-2 py-2">
+                <span class="text-sm font-medium">
+                  {{ t('dashboard.widgets.subscriptions.settings.showStrip') }}
+                </span>
+                <Switch :model-value="showStrip" @update:model-value="onShowStripToggle" />
+              </div>
             </div>
           </div>
         </template>
@@ -119,6 +126,7 @@ import ResponsiveTooltip from '@/components/common/responsive-tooltip.vue';
 import SlidingPanels from '@/components/common/sliding-panels.vue';
 import { Button } from '@/components/lib/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/lib/ui/popover';
+import { Switch } from '@/components/lib/ui/switch';
 import { useUserSettings } from '@/composable/data-queries/user-settings';
 import { ArrowLeftIcon, CheckIcon, ChevronRightIcon, InfoIcon, SettingsIcon } from '@lucide/vue';
 import type { Ref } from 'vue';
@@ -127,16 +135,34 @@ import { useI18n } from 'vue-i18n';
 
 const TYPE_CHOICES = [
   { value: '', label: 'dashboard.widgets.subscriptions.configTypeAll' },
-  { value: 'subscription', label: 'dashboard.widgets.subscriptions.configTypeSubscriptions' },
+  {
+    value: 'subscription',
+    label: 'dashboard.widgets.subscriptions.configTypeSubscriptions',
+  },
   { value: 'bill', label: 'dashboard.widgets.subscriptions.configTypeBills' },
-  { value: 'installment', label: 'dashboard.widgets.subscriptions.configTypeInstallments' },
+  {
+    value: 'installment',
+    label: 'dashboard.widgets.subscriptions.configTypeInstallments',
+  },
 ] as const;
 
 const LOOKBACK_CHOICES: Array<{ value: IncomeLookbackMonths; label: string }> = [
-  { value: 1, label: 'dashboard.widgets.subscriptions.settings.lookbackOption.1' },
-  { value: 3, label: 'dashboard.widgets.subscriptions.settings.lookbackOption.3' },
-  { value: 6, label: 'dashboard.widgets.subscriptions.settings.lookbackOption.6' },
-  { value: 12, label: 'dashboard.widgets.subscriptions.settings.lookbackOption.12' },
+  {
+    value: 1,
+    label: 'dashboard.widgets.subscriptions.settings.lookbackOption.1',
+  },
+  {
+    value: 3,
+    label: 'dashboard.widgets.subscriptions.settings.lookbackOption.3',
+  },
+  {
+    value: 6,
+    label: 'dashboard.widgets.subscriptions.settings.lookbackOption.6',
+  },
+  {
+    value: 12,
+    label: 'dashboard.widgets.subscriptions.settings.lookbackOption.12',
+  },
 ];
 
 const { t } = useI18n({ useScope: 'global' });
@@ -172,6 +198,8 @@ const currentLookbackChoice = computed(
   () => LOOKBACK_CHOICES.find((c) => c.value === currentLookback.value) ?? LOOKBACK_CHOICES[2]!,
 );
 
+const showStrip = computed(() => widgetConfigRef?.value?.config?.showStrip !== false);
+
 function goTo(target: View) {
   view.value = target;
 }
@@ -195,6 +223,10 @@ async function persistConfig(patch: Record<string, unknown>) {
 function onTypeChange(value: string) {
   persistConfig({ type: value });
   goTo('main');
+}
+
+function onShowStripToggle(value: boolean) {
+  persistConfig({ showStrip: value });
 }
 
 function onLookbackChange(value: IncomeLookbackMonths) {

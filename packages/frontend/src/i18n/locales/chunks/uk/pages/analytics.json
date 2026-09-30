@@ -346,6 +346,7 @@
       },
       "milestones": {
         "reached": "Досягнуто",
+        "reachedOn": "Досягнуто {date}",
         "eta": "через {duration} · {date}"
       },
       "empty": {

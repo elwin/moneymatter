@@ -6,17 +6,20 @@ import {
   getAvailableAccounts,
   listConnections,
 } from '@/api/bank-data-providers';
-import { VUE_QUERY_CACHE_KEYS } from '@/common/const';
+import { VUE_QUERY_CACHE_KEYS, VUE_QUERY_GLOBAL_PREFIXES } from '@/common/const';
+import BankConnectionLogo from '@/components/common/bank-connection-logo.vue';
 import ResponsiveDialog from '@/components/common/responsive-dialog.vue';
 import { Button } from '@/components/lib/ui/button';
 import { Callout } from '@/components/lib/ui/callout';
 import { Label } from '@/components/lib/ui/label';
+import { RadioGroup, RadioGroupItem } from '@/components/lib/ui/radio-group';
 import * as Select from '@/components/lib/ui/select';
 import { useNotificationCenter } from '@/components/notification-center';
 import { useFormatCurrency } from '@/composable/formatters';
+import { cn } from '@/lib/utils';
 import { useAccountsStore } from '@/stores';
-import { AccountModel } from '@bt/shared/types';
-import { useQuery } from '@tanstack/vue-query';
+import { AccountModel, type LinkResidualTarget } from '@bt/shared/types';
+import { useQuery, useQueryClient } from '@tanstack/vue-query';
 import { CheckIcon, Link2Icon } from '@lucide/vue';
 import { computed, ref } from 'vue';
 
@@ -27,6 +30,7 @@ const props = defineProps<{
 const { addSuccessNotification, addErrorNotification } = useNotificationCenter();
 const { formatAmountByCurrencyCode } = useFormatCurrency();
 const accountsStore = useAccountsStore();
+const queryClient = useQueryClient();
 
 const isAccountLinkedToBank = computed(() => !!props.account.bankDataProviderConnectionId);
 const isSystemAccount = computed(() => props.account.type === 'system');
@@ -41,6 +45,20 @@ const isDialogOpen = ref(false);
 const selectedConnectionId = ref<string | undefined>(undefined);
 const selectedExternalAccountId = ref<string | undefined>(undefined);
 const isLinking = ref(false);
+const residualTarget = ref<LinkResidualTarget>('adjustment');
+
+const RESIDUAL_OPTIONS = [
+  {
+    value: 'adjustment',
+    labelKey: 'pages.account.link.residualAdjustmentLabel',
+    descriptionKey: 'pages.account.link.residualAdjustmentDescription',
+  },
+  {
+    value: 'opening-balance',
+    labelKey: 'pages.account.link.residualOpeningLabel',
+    descriptionKey: 'pages.account.link.residualOpeningDescription',
+  },
+] as const satisfies readonly { value: LinkResidualTarget; labelKey: string; descriptionKey: string }[];
 
 // Fetch user connections
 const { data: connections, isLoading: isLoadingConnections } = useQuery<BankConnection[]>({
@@ -55,6 +73,8 @@ const { data: externalAccounts, isLoading: isLoadingExternalAccounts } = useQuer
   queryFn: () => getAvailableAccounts(selectedConnectionId.value!),
   enabled: computed(() => !!selectedConnectionId.value),
 });
+
+const selectedConnection = computed(() => connections.value?.find((c) => String(c.id) === selectedConnectionId.value));
 
 const hasConnections = computed(() => connections.value && connections.value.length > 0);
 const hasExternalAccounts = computed(() => externalAccounts.value && externalAccounts.value.length > 0);
@@ -74,10 +94,17 @@ const linkAccount = async () => {
       accountId: props.account.id,
       connectionId: selectedConnectionId.value!,
       externalAccountId: selectedExternalAccountId.value!,
+      residualTarget: balanceDifference.value !== 0 ? residualTarget.value : undefined,
     });
 
     // Refresh accounts store
     await accountsStore.loadAccounts();
+    queryClient.invalidateQueries({
+      predicate: (query) => {
+        const queryKey = query.queryKey as string[];
+        return queryKey.includes(VUE_QUERY_GLOBAL_PREFIXES.transactionChange);
+      },
+    });
 
     addSuccessNotification(result.message);
     resetForm();
@@ -93,12 +120,22 @@ const resetForm = () => {
   isDialogOpen.value = false;
   selectedConnectionId.value = undefined;
   selectedExternalAccountId.value = undefined;
+  residualTarget.value = 'adjustment';
 };
 
 const selectedExternalAccount = computed(() => {
   if (!selectedExternalAccountId.value || !externalAccounts.value) return null;
   return externalAccounts.value.find((a) => a.externalId === selectedExternalAccountId.value);
 });
+
+const systemOwnFunds = computed(() => props.account.currentBalance - props.account.creditLimit);
+const externalOwnFunds = computed(() =>
+  selectedExternalAccount.value ? selectedExternalAccount.value.balance - selectedExternalAccount.value.creditLimit : 0,
+);
+
+const balanceDifference = computed(() =>
+  selectedExternalAccount.value ? Number((externalOwnFunds.value - systemOwnFunds.value).toFixed(2)) : 0,
+);
 
 const currencyMismatch = computed(() => {
   if (!selectedExternalAccount.value) return false;
@@ -159,7 +196,13 @@ const linkingError = computed(() => {
           <Label for="connection-select">{{ $t('pages.account.link.connectionLabel') }}</Label>
           <Select.Select v-model="selectedConnectionId" :disabled="isLoadingConnections || !hasConnections">
             <Select.SelectTrigger id="connection-select">
-              <Select.SelectValue :placeholder="$t('pages.account.link.selectConnection')" />
+              <Select.SelectValue :placeholder="$t('pages.account.link.selectConnection')">
+                <span v-if="selectedConnection" class="flex min-w-0 items-center gap-2">
+                  <BankConnectionLogo :connection-id="selectedConnection.id" size="size-5" class="rounded-sm" />
+                  <span class="truncate">{{ selectedConnection.providerName }}</span>
+                </span>
+                <template v-else>{{ $t('pages.account.link.selectConnection') }}</template>
+              </Select.SelectValue>
             </Select.SelectTrigger>
             <Select.SelectContent>
               <template v-if="isLoadingConnections">
@@ -169,7 +212,10 @@ const linkingError = computed(() => {
               </template>
               <template v-else-if="hasConnections">
                 <Select.SelectItem v-for="conn in connections" :key="conn.id" :value="String(conn.id)">
-                  {{ conn.providerName }}
+                  <span class="flex items-center gap-2">
+                    <BankConnectionLogo :connection-id="conn.id" size="size-5" class="rounded-sm" />
+                    {{ conn.providerName }}
+                  </span>
                 </Select.SelectItem>
               </template>
               <template v-else>
@@ -205,7 +251,7 @@ const linkingError = computed(() => {
               </template>
               <template v-else-if="hasExternalAccounts">
                 <Select.SelectItem v-for="acc in externalAccounts" :key="acc.externalId" :value="acc.externalId">
-                  {{ acc.name }} ({{ formatAmountByCurrencyCode(acc.balance, acc.currency) }})
+                  {{ acc.name }} ({{ formatAmountByCurrencyCode(acc.balance - acc.creditLimit, acc.currency) }})
                 </Select.SelectItem>
               </template>
               <template v-else>
@@ -229,19 +275,46 @@ const linkingError = computed(() => {
             <div>
               <p class="text-muted-foreground">{{ $t('pages.account.link.systemAccount') }}</p>
               <p class="font-mono">
-                {{ formatAmountByCurrencyCode(account.currentBalance, account.currencyCode) }}
+                {{ formatAmountByCurrencyCode(systemOwnFunds, account.currencyCode) }}
               </p>
             </div>
             <div>
               <p class="text-muted-foreground">{{ $t('pages.account.link.externalAccount') }}</p>
               <p class="font-mono">
-                {{ formatAmountByCurrencyCode(selectedExternalAccount.balance, selectedExternalAccount.currency) }}
+                {{ formatAmountByCurrencyCode(externalOwnFunds, selectedExternalAccount.currency) }}
               </p>
             </div>
           </div>
-          <p class="mt-2 text-xs text-yellow-600">
-            {{ $t('pages.account.link.adjustmentNote') }}
-          </p>
+          <div class="mt-2 flex items-center justify-between gap-2 border-t pt-2">
+            <p class="text-muted-foreground">{{ $t('pages.account.link.difference') }}</p>
+            <p
+              :class="
+                cn(
+                  'font-mono',
+                  balanceDifference < 0 && 'text-app-expense-color',
+                  balanceDifference > 0 && 'text-app-income-color',
+                )
+              "
+            >
+              {{ formatAmountByCurrencyCode(balanceDifference, account.currencyCode) }}
+            </p>
+          </div>
+
+          <div v-if="balanceDifference !== 0" class="mt-3 space-y-2 border-t pt-3">
+            <p class="font-semibold">{{ $t('pages.account.link.residualTitle') }}</p>
+            <RadioGroup v-model="residualTarget" class="gap-3">
+              <div v-for="option in RESIDUAL_OPTIONS" :key="option.value" class="flex items-start gap-2">
+                <RadioGroupItem :id="`residual-target-${option.value}`" :value="option.value" class="mt-0.5" />
+                <Label :for="`residual-target-${option.value}`" class="cursor-pointer">
+                  {{ $t(option.labelKey) }}
+                  <span class="text-muted-foreground mt-0.5 block text-xs font-normal">
+                    {{ $t(option.descriptionKey) }}
+                  </span>
+                </Label>
+              </div>
+            </RadioGroup>
+            <p class="text-muted-foreground text-xs">{{ $t('pages.account.link.residualHint') }}</p>
+          </div>
         </div>
       </div>
 

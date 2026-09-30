@@ -1,4 +1,5 @@
 <script lang="ts" setup>
+import type { TagsIndicatorVariant } from '@/components/common/tags-indicator.vue';
 import { useScrollAreaContainer } from '@/composable/scroll-area-container';
 import { useBulkTransactionActions } from '@/composable/use-bulk-transaction-actions';
 import { CUSTOM_BREAKPOINTS, useWindowBreakpoints } from '@/composable/window-breakpoints';
@@ -11,10 +12,12 @@ import { useI18n } from 'vue-i18n';
 import { SCROLL_AREA_IDS } from '../lib/ui/scroll-area/types';
 import BulkActionDialogs from './bulk-action-dialogs.vue';
 import BulkEditToolbar from './bulk-edit-toolbar.vue';
+import PlannedRowsToggle from './planned-rows-toggle.vue';
 import TransactionDetailsModal from './transaction-details-modal.vue';
 import TransactionGroupRecord, { type GroupRowData } from './transaction-group-record.vue';
 import TransactionRecord from './transaction-record.vue';
 import { useManageTransactionDialog } from './use-manage-transaction-dialog';
+import { PLANNED_HEADER, useCollapsedPlanned } from './use-collapsed-planned';
 import { getDisplayItemKey, isGroupRow, useTransactionsDisplay } from './use-transactions-display';
 
 const { t } = useI18n();
@@ -43,6 +46,9 @@ const props = withDefaults(
     /** For scoped lists (e.g. a single payee) where a group row would misrepresent the set and hide per-row actions */
     disableGrouping?: boolean;
     selectionScopeKey?: string;
+    compact?: boolean;
+    hidePlannedMarker?: boolean;
+    tagsVariant?: TagsIndicatorVariant;
   }>(),
   {
     isTransactionRecord: false,
@@ -57,7 +63,7 @@ const props = withDefaults(
 );
 const emits = defineEmits(['fetch-next-page']);
 const [DefineRowTemplate, UseRowTemplate] = createReusableTemplate<{
-  item: TransactionModel | GroupRowData;
+  item: TransactionModel | GroupRowData | typeof PLANNED_HEADER;
   index: number;
 }>();
 const isMobile = useWindowBreakpoints(CUSTOM_BREAKPOINTS.uiMobile);
@@ -69,6 +75,17 @@ const { displayTransactions } = useTransactionsDisplay({
   disableGrouping: () => props.disableGrouping,
   maxDisplay: () => props.maxDisplay,
 });
+
+// Raw lists are narrow slices (e.g. the planned-overview widget), where collapsing would hide everything.
+const { rows, visibleItems, isPlannedExpanded, plannedCount } = useCollapsedPlanned({
+  items: displayTransactions,
+  isPlanned: (item) => !isGroupRow(item) && item.isPlanned,
+  enabled: () => !props.rawList,
+});
+const rowKey = (index: number) => {
+  const row = rows.value[index];
+  return row === PLANNED_HEADER ? 'planned-header' : getDisplayItemKey(row, index);
+};
 
 // Transaction detail dialog (Dialog on desktop, Drawer on mobile). transfer_to_loan
 // pairs route to a separate, simpler loan dialog with its own visibility flag.
@@ -100,7 +117,7 @@ watch(listContainerRef, (el) => {
 
 // Selection, eligibility, bulk mutations and dialog state — shared with the table view.
 const bulkActions = useBulkTransactionActions({
-  getTransactions: () => displayTransactions.value.filter((item): item is TransactionModel => !isGroupRow(item)),
+  getTransactions: () => visibleItems.value.filter((item): item is TransactionModel => !isGroupRow(item)),
   getScopeKey: () => props.selectionScopeKey,
 });
 const {
@@ -134,7 +151,7 @@ const handleGroupRowClick = (groupId: string) => {
 
 const virtualizer = useVirtualizer(
   computed(() => ({
-    count: displayTransactions.value.length + (props.hasNextPage ? 1 : 0),
+    count: rows.value.length + (props.hasNextPage ? 1 : 0),
     getScrollElement: () => scrollContainer?.value?.viewportElement,
     estimateSize: () => 52 + 8,
     overscan: 10,
@@ -157,7 +174,7 @@ watchEffect(() => {
 
   if (!lastItem) return;
 
-  if (lastItem.index >= displayTransactions.value.length - 1 && props.hasNextPage && !props.isFetchingNextPage) {
+  if (lastItem.index >= rows.value.length - 1 && props.hasNextPage && !props.isFetchingNextPage) {
     emits('fetch-next-page');
   }
 });
@@ -186,7 +203,13 @@ watchEffect(() => {
 
     <!-- Reusable row template: renders a group row or a transaction row with leading/trailing slots -->
     <DefineRowTemplate v-slot="{ item, index }">
-      <TransactionGroupRecord v-if="isGroupRow(item)" :group="item" @click="handleGroupRowClick" />
+      <PlannedRowsToggle
+        v-if="item === PLANNED_HEADER"
+        v-model="isPlannedExpanded"
+        :count="plannedCount"
+        class="h-13 w-full rounded-md"
+      />
+      <TransactionGroupRecord v-else-if="isGroupRow(item)" :group="item" @click="handleGroupRowClick" />
 
       <div v-else class="flex items-center gap-1">
         <slot name="row-leading" :tx="item as TransactionModel" />
@@ -194,6 +217,9 @@ watchEffect(() => {
           <TransactionRecord
             :tx="item as TransactionModel"
             :show-checkbox="enableBulkEdit"
+            :compact="compact"
+            :tags-variant="tagsVariant"
+            :hide-planned-marker="hidePlannedMarker || !rawList"
             :is-selected="isTransactionSelected((item as TransactionModel).id)"
             :is-selectable="isTransactionSelectable(item as TransactionModel)"
             :unselectable-reason="getUnselectableReason(item as TransactionModel)"
@@ -212,7 +238,7 @@ watchEffect(() => {
           <div :style="{ height: `${totalSize}px` }" class="relative">
             <div
               v-for="virtualRow in virtualRows"
-              :key="getDisplayItemKey(displayTransactions[virtualRow.index], virtualRow.index)"
+              :key="rowKey(virtualRow.index)"
               :style="{
                 position: 'absolute',
                 top: 0,
@@ -221,11 +247,7 @@ watchEffect(() => {
                 transform: `translateY(${virtualRow.start - scrollMargin}px)`,
               }"
             >
-              <UseRowTemplate
-                v-if="displayTransactions[virtualRow.index]"
-                :item="displayTransactions[virtualRow.index]!"
-                :index="virtualRow.index"
-              />
+              <UseRowTemplate v-if="rows[virtualRow.index]" :item="rows[virtualRow.index]!" :index="virtualRow.index" />
             </div>
           </div>
 
@@ -244,7 +266,7 @@ watchEffect(() => {
     </template>
     <template v-else>
       <div v-bind="$attrs" class="grid grid-cols-1 gap-2">
-        <template v-for="(item, index) in displayTransactions" :key="getDisplayItemKey(item, index)">
+        <template v-for="(item, index) in rows" :key="rowKey(index)">
           <UseRowTemplate :item="item" :index="index" />
         </template>
       </div>

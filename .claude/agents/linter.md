@@ -35,6 +35,16 @@ This is a monorepo with separate backend and frontend:
 
 **Always invoke type checks through these npm scripts** — never call `tsc` / `vue-tsc` directly. The npm scripts are pre-approved in settings, so running them avoids permission prompts.
 
+### Formatting (oxfmt)
+
+Only when asked. The project formats with oxfmt (`.oxfmtrc.json`), never Prettier.
+
+| Scope | Command                |
+| ----- | ---------------------- |
+| All   | `npm run format:check` |
+
+**Read-only agent:** never run `npm run format`, any `--write`/`--fix` flag, `git checkout`, `git restore`, `git stash` or anything else that modifies files. Report issues; the caller fixes them.
+
 ## Workflow
 
 1. **Determine scope:** If user doesn't specify, check both backend and frontend

@@ -1,7 +1,11 @@
 import { TRANSACTION_TRANSFER_NATURE } from '@bt/shared/types';
 import { describe, expect, it } from 'vitest';
 
-import { buildLatestRecordsTransferNatures, readLatestRecordsExclusions } from './latest-records-config';
+import {
+  buildLatestRecordsTransferNatures,
+  readLatestRecordsExclusions,
+  readLatestRecordsTagsVariant,
+} from './latest-records-config';
 
 const widgetConfig = (config?: Record<string, unknown>) => ({ widgetId: 'latest-records', colSpan: 1, config });
 
@@ -69,5 +73,20 @@ describe('buildLatestRecordsTransferNatures', () => {
     expect(natures).not.toContain(TRANSACTION_TRANSFER_NATURE.transfer_out_wallet);
     expect(natures).toContain(TRANSACTION_TRANSFER_NATURE.not_transfer);
     expect(natures).toContain(TRANSACTION_TRANSFER_NATURE.transfer_to_loan);
+  });
+});
+
+describe('readLatestRecordsTagsVariant', () => {
+  it('defaults to chips when nothing is stored or the config is missing', () => {
+    expect(readLatestRecordsTagsVariant({ widgetConfig: widgetConfig() })).toBe('chips');
+    expect(readLatestRecordsTagsVariant({ widgetConfig: null })).toBe('chips');
+  });
+
+  it('reads rails', () => {
+    expect(readLatestRecordsTagsVariant({ widgetConfig: widgetConfig({ tagsVariant: 'rails' }) })).toBe('rails');
+  });
+
+  it('falls back to chips for unknown values', () => {
+    expect(readLatestRecordsTagsVariant({ widgetConfig: widgetConfig({ tagsVariant: 'dots' }) })).toBe('chips');
   });
 });

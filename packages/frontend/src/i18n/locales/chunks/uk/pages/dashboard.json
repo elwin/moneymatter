@@ -113,7 +113,8 @@
             "3": "Останні 3 місяці",
             "6": "Останні 6 місяців",
             "12": "Останні 12 місяців"
-          }
+          },
+          "showStrip": "Показувати графік на 30 днів"
         }
       },
       "categoryTracker": {
@@ -167,9 +168,8 @@
       },
       "plannedOverview": {
         "title": "Заплановані",
-        "projectedTotal": "Прогнозований баланс",
-        "pendingCount": "{count} запланований запис | {count} заплановані записи | {count} запланованих записів",
-        "through": "До {date}",
+        "projectedBy": "Прогнозовано на {date}",
+        "upcoming": "Майбутні · {count}",
         "loadFailed": "Не вдалося завантажити заплановані транзакції"
       },
       "emptyState": "Немає даних за вибраний період часу.",
@@ -229,13 +229,18 @@
   },
   "widgets": {
     "subscriptionsOverview": {
-      "upcoming": {
-        "collapsed": "Найближчих платежів: {count}",
-        "collapsedAction": "Відкрити"
+      "payAction": "Позначити як сплачено",
+      "listTitle": "Найближчі",
+      "dueCount": "До сплати: {count}",
+      "nothingDue": "Найближчі 3 дні без платежів",
+      "overdueHint": "Прострочено з {date}",
+      "dueSoonHint": "Строк оплати протягом 3 днів",
+      "strip": {
+        "title": "Наступні 30 днів",
+        "goingOut": "Витрати: {amount}",
+        "today": "Сьогодні"
       },
-      "empty": "Все сплачено — найближчі 3 дні без платежів.",
-      "overdueBadge": "Прострочено",
-      "payAction": "Позначити як сплачено"
+      "loadFailed": "Не вдалося завантажити регулярні платежі"
     },
     "latestRecords": {
       "config": {
@@ -253,7 +258,11 @@
         "excludeBalanceAdjustmentsDescription": "Приховати транзакції коригування балансу",
         "plannedTitle": "Заплановані транзакції",
         "excludePlannedDescription": "Приховати непідтверджені заплановані транзакції зі списку",
-        "nothingExcluded": "Нічого не виключено"
+        "nothingExcluded": "Нічого не виключено",
+        "tagsStyleTitle": "Теги",
+        "tagsStyleNames": "Назви",
+        "tagsStyleBars": "Смужки",
+        "tagsStyleSaveError": "Не вдалося зберегти стиль тегів. Спробуйте ще раз."
       },
       "overdueBadge": "Прострочено",
       "scheduledBadge": "Заплановано",

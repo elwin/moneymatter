@@ -89,7 +89,7 @@ const getUtilizationColors = ({ utilization }: { utilization: number }) => {
 </script>
 
 <template>
-  <WidgetWrapper :is-fetching="isLoading">
+  <WidgetWrapper class="max-md:max-h-96" :is-fetching="isLoading">
     <template #title>
       <span class="inline-flex items-center gap-1">
         {{ $t('dashboard.widgets.creditUtilization.title') }}
@@ -149,7 +149,7 @@ const getUtilizationColors = ({ utilization }: { utilization: number }) => {
             {{ $t('dashboard.widgets.creditUtilization.noAccounts') }}
           </div>
         </template>
-        <ScrollArea v-else class="min-h-0 flex-1" viewport-class="overscroll-contain">
+        <ScrollArea v-else class="min-h-0 flex-1" viewport-class="md:overscroll-contain">
           <div class="-mx-2 flex flex-col">
             <router-link
               v-for="account in creditAccounts"

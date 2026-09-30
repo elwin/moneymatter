@@ -1,4 +1,4 @@
-import { AI_FEATURE, type ExtractedInvoice, TRANSACTION_TYPES } from '@bt/shared/types';
+import { AI_FEATURE, AI_PROVIDER, type ExtractedInvoice, TRANSACTION_TYPES } from '@bt/shared/types';
 import type { Expect, MutuallyAssignable } from '@bt/shared/types/type-testing';
 import { currencyCode } from '@common/lib/zod/custom-types';
 import { t } from '@i18n/index';
@@ -7,8 +7,10 @@ import { logger } from '@js/utils/logger';
 import { AI_MAX_OUTPUT_TOKENS, aiCallGuards, createAIClient, describeMissingAiConfiguration } from '@services/ai';
 import { detectMimeType } from '@services/attachments/attachments.service';
 import { resolveAiExtractionFailure } from '@services/import-export/core/ai-extraction-failure';
-import { Output, generateText } from 'ai';
+import { extractTextFromFile } from '@services/import-export/statement-parser';
+import { type FilePart, Output, type TextPart, generateText } from 'ai';
 import { isValid, parseISO } from 'date-fns';
+import { getDocumentProxy, renderPageAsImage } from 'unpdf';
 import { z } from 'zod';
 
 const SYSTEM_PROMPT = [
@@ -27,6 +29,9 @@ const SYSTEM_PROMPT = [
 // ponytail: a link to one invoice carries an id or token, so a digit-free path is taken for
 // a generic page (order status, FAQ) and dropped. Revisit if a real invoice link gets lost.
 const DOCUMENT_SPECIFIC_URL = /^https:\/\/[^/]+\/.*\d/;
+
+// ponytail: a long scan loses every page past this cap. Raise it if totals get missed.
+const MAX_SCANNED_PDF_PAGES = 3;
 
 /** Every field is nullable so a "this is not an invoice" answer still parses. */
 const aiAnswerSchema = z.object({
@@ -67,6 +72,20 @@ export const invoiceSchema = z.object({
  */
 export type InvoiceSchemaIsInSync = Expect<MutuallyAssignable<z.infer<typeof invoiceSchema>, ExtractedInvoice>>;
 
+async function renderPdfPages({ bytes }: { bytes: Buffer }): Promise<FilePart[]> {
+  const pdf = await getDocumentProxy(new Uint8Array(bytes), { isEvalSupported: false });
+  try {
+    const pages: FilePart[] = [];
+    for (let pageNumber = 1; pageNumber <= Math.min(pdf.numPages, MAX_SCANNED_PDF_PAGES); pageNumber++) {
+      const png = await renderPageAsImage(pdf, pageNumber, { canvasImport: () => import('@napi-rs/canvas'), scale: 2 });
+      pages.push({ type: 'file', data: new Uint8Array(png), mediaType: 'image/png' });
+    }
+    return pages;
+  } finally {
+    await pdf.destroy();
+  }
+}
+
 interface ExtractInvoiceResult {
   invoice: ExtractedInvoice;
   provider: string;
@@ -98,6 +117,20 @@ export async function extractInvoice({
     throw new ValidationError({ message: await describeMissingAiConfiguration({ userId }) });
   }
 
+  let documentParts: Array<TextPart | FilePart> = [{ type: 'file', data: bytes, mediaType: mimeType }];
+  // Custom OpenAI-compatible endpoints accept images but reject the `file` part a PDF becomes,
+  // so a PDF goes as its text, or as page images when it has no text layer.
+  if (aiClient.provider === AI_PROVIDER.custom && mimeType === 'application/pdf') {
+    const extraction = await extractTextFromFile({ buffer: bytes, fileType: 'pdf' });
+    if (extraction.success && extraction.text) {
+      documentParts = [{ type: 'text', text: extraction.text }];
+    } else if (extraction.errorCode === 'NO_TEXT_CONTENT') {
+      documentParts = await renderPdfPages({ bytes });
+    } else {
+      throw new ValidationError({ message: t({ key: 'invoiceMatching.pdfWithoutText' }) });
+    }
+  }
+
   const { abortSignal, maxRetries } = aiCallGuards({ provider: aiClient.provider });
 
   let answer: z.infer<typeof aiAnswerSchema>;
@@ -109,10 +142,7 @@ export async function extractInvoice({
       messages: [
         {
           role: 'user',
-          content: [
-            { type: 'text', text: 'Report the invoice fields for the attached document.' },
-            { type: 'file', data: bytes, mediaType: mimeType },
-          ],
+          content: [{ type: 'text', text: 'Report the invoice fields for the attached document.' }, ...documentParts],
         },
       ],
       abortSignal,

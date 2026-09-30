@@ -1,24 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { FireChart } from './build-fire-plan';
-import { displayProgressPct, formatFireCompact, shapeFireChart } from './fire-display';
-
-describe('formatFireCompact', () => {
-  it.each([
-    [950, '$950'],
-    [75_000, '$75K'],
-    [52_500, '$52.5K'],
-    [254_930, '$255K'],
-    [700_000, '$700K'],
-    [999_600, '$1M'],
-    [1_019_999, '$1.02M'],
-    [1_500_000, '$1.5M'],
-    [0, '$0'],
-    [-52_500, '-$52.5K'],
-  ])('%d → %s', (amount, expected) => {
-    expect(formatFireCompact({ amount, currency: 'USD' })).toBe(expected);
-  });
-});
+import { displayProgressPct, shapeFireChart } from './fire-display';
 
 describe('displayProgressPct', () => {
   it('floors to one decimal', () => {

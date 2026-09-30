@@ -25,6 +25,7 @@ import { HttpResponse, http } from 'msw';
 
 // getExchangeRate pivots through USD and truncates the rate to 5 decimals.
 const EUR_TO_AED = Math.trunc((AED_PER_USD / EUR_PER_USD) * 100_000) / 100_000;
+const utcDateDaysAgo = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString().split('T')[0]!;
 
 /**
  * Create a fully-active EnableBanking connection with one linked account.
@@ -2944,6 +2945,45 @@ describe('Enable Banking Data Provider E2E', () => {
 
       await sync();
       expect(helpers.enablebanking.lastTransactionsQuery()?.dateFrom).toBe(utcDaysAgo(2));
+    });
+
+    describe('when the bank drops a stored pending payment before listing its booked copy', () => {
+      const newerBooked: FixedTransaction = {
+        amount: '10.00',
+        currency: 'EUR',
+        isExpense: true,
+        entryReference: 'newer_booked',
+        bookingDate: utcDateDaysAgo(2),
+      };
+
+      const syncWithBankGap = async ({ pendingDaysAgo }: { pendingDaysAgo: number }) => {
+        await helpers.patchUserSettings({ patch: { importPendingBankTransactions: true }, raw: true });
+        const olderPending: FixedTransaction = { ...CARD_PENDING, transactionDate: utcDateDaysAgo(pendingDaysAgo) };
+        helpers.enablebanking.setFixedTransactions([newerBooked, olderPending]);
+        const { connectionId, accountId } = await setupActiveConnection();
+        const sync = () => helpers.bankDataProviders.syncTransactionsForAccount({ connectionId, accountId, raw: true });
+
+        helpers.enablebanking.setFixedTransactions([newerBooked]);
+        await sync();
+
+        helpers.enablebanking.setFixedTransactions([newerBooked, { ...olderPending, status: 'BOOK' }]);
+        await sync();
+
+        return { accountId };
+      };
+
+      it('still fetches from the stored pending row and books it', async () => {
+        const { accountId } = await syncWithBankGap({ pendingDaysAgo: 10 });
+
+        expect(helpers.enablebanking.lastTransactionsQuery()?.dateFrom).toBe(utcDateDaysAgo(10));
+        expect(await listIsPending({ accountId })).toEqual([false, false]);
+      });
+
+      it('ignores a stored pending row older than 14 days', async () => {
+        await syncWithBankGap({ pendingDaysAgo: 20 });
+
+        expect(helpers.enablebanking.lastTransactionsQuery()?.dateFrom).toBe(utcDateDaysAgo(2));
+      });
     });
 
     it('uses the booked balance when the bank also reports a lower available one', async () => {

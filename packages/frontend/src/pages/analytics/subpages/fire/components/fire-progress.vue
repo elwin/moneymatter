@@ -3,7 +3,10 @@
     <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 text-sm">
       <div class="font-semibold">{{ $t('analytics.fire.progress.progressTo', { type: targetName }) }}</div>
       <div class="text-muted-foreground tabular-nums">
-        <span :class="cn('font-bold', isReached ? 'text-success-text' : 'text-foreground')">{{ pctLabel }}</span>
+        <span
+          :class="cn('text-2xl font-extrabold tracking-tight', isReached ? 'text-success-text' : 'text-foreground')"
+          >{{ pctLabel }}</span
+        >
         <template v-if="plan.target !== null">
           ·
           {{
@@ -84,19 +87,13 @@ import { cn } from '@/lib/utils';
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 
-import {
-  displayProgressPct,
-  formatProgressPct,
-  milestoneLabel,
-  useFormatFireCompact,
-} from '@/composable/fire/fire-display';
+import { displayProgressPct, formatProgressPct, milestoneLabel } from '@/composable/fire/fire-display';
 
 const props = defineProps<{ plan: FirePlan; targetName: string }>();
 
 const { t } = useI18n();
 const { format } = useDateLocale();
-const { formatWholeBaseCurrency } = useFormatCurrency();
-const formatCompact = useFormatFireCompact();
+const { formatWholeBaseCurrency, formatCompactBaseCurrency: formatCompact } = useFormatCurrency();
 
 const isReached = computed(() => props.plan.status === 'reached');
 const pct = computed(() => displayProgressPct({ ratio: props.plan.progress ?? 0, reached: isReached.value }));

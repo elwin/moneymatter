@@ -3,6 +3,7 @@ import type { DashboardWidgetConfig } from '@/api/user-settings';
 import CategoryCircle from '@/components/common/category-circle.vue';
 import { buttonVariants, Button } from '@/components/lib/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/lib/ui/popover';
+import { ScrollArea } from '@/components/lib/ui/scroll-area';
 import IncludePlannedMenuItem from '@/components/widgets/components/include-planned-menu-item.vue';
 import { useIncludePlannedConfig } from '@/components/widgets/use-include-planned-config';
 import { useFormatCurrency } from '@/composable/formatters';
@@ -274,79 +275,81 @@ const navigateToTransactions = ({ categoryId }: { categoryId: string }) => {
     </template>
 
     <template v-else>
-      <div class="-mx-2 flex flex-col gap-2 overflow-y-auto">
-        <!-- Customize mode: draggable rows -->
-        <VueDraggable
-          v-if="isCustomizing"
-          v-model="draggableRows"
-          handle=".drag-handle"
-          :animation="200"
-          class="flex flex-col gap-2"
-        >
-          <div
-            v-for="(item, index) in draggableRows"
-            :key="item.id"
-            class="hover:bg-muted/50 flex h-9 cursor-pointer items-center gap-1 rounded-md py-0.5 pr-3 pl-1 transition-colors"
-            @click="openPickerForReplace({ categoryId: item.id })"
+      <ScrollArea class="-mx-2 min-h-0 flex-1">
+        <div class="flex flex-col gap-2">
+          <!-- Customize mode: draggable rows -->
+          <VueDraggable
+            v-if="isCustomizing"
+            v-model="draggableRows"
+            handle=".drag-handle"
+            :animation="200"
+            class="flex flex-col gap-2"
           >
             <div
-              :class="
-                buttonVariants({
-                  size: 'icon-sm',
-                  variant: 'ghost',
-                  class: 'drag-handle cursor-grab active:cursor-grabbing',
-                })
-              "
-              @click.stop
+              v-for="(item, index) in draggableRows"
+              :key="item.id"
+              class="hover:bg-muted/50 flex h-9 cursor-pointer items-center gap-1 rounded-md py-0.5 pr-3 pl-1 transition-colors"
+              @click="openPickerForReplace({ categoryId: item.id })"
             >
-              <GripVerticalIcon class="text-muted-foreground size-4" />
+              <div
+                :class="
+                  buttonVariants({
+                    size: 'icon-sm',
+                    variant: 'ghost',
+                    class: 'drag-handle cursor-grab active:cursor-grabbing',
+                  })
+                "
+                @click.stop
+              >
+                <GripVerticalIcon class="text-muted-foreground size-4" />
+              </div>
+
+              <CategoryCircle :category-id="item.id" />
+
+              <span class="min-w-0 flex-1 truncate text-sm">{{ item.name }}</span>
+
+              <Button
+                data-testid="cst-remove-category"
+                size="icon-sm"
+                variant="ghost-destructive"
+                @click.stop="removeCategory({ categoryId: item.id })"
+              >
+                <Trash2Icon class="size-3.5" />
+              </Button>
             </div>
+          </VueDraggable>
 
-            <CategoryCircle :category-id="item.id" />
-
-            <span class="min-w-0 flex-1 truncate text-sm">{{ item.name }}</span>
-
-            <Button
-              data-testid="cst-remove-category"
-              size="icon-sm"
-              variant="ghost-destructive"
-              @click.stop="removeCategory({ categoryId: item.id })"
+          <!-- Normal mode: static rows -->
+          <template v-else>
+            <button
+              v-for="item in categoryRows"
+              :key="item.id"
+              class="hover:bg-muted/50 flex h-9 w-full items-center gap-2 rounded-md px-3 py-0.5 text-left transition-colors"
+              @click="navigateToTransactions({ categoryId: item.id })"
             >
-              <Trash2Icon class="size-3.5" />
-            </Button>
-          </div>
-        </VueDraggable>
+              <CategoryCircle :category-id="item.id" />
 
-        <!-- Normal mode: static rows -->
-        <template v-else>
+              <span class="min-w-0 flex-1 truncate text-sm">{{ item.name }}</span>
+
+              <span class="text-amount shrink-0 text-sm" :class="getAmountClass({ netAmount: item.netAmount })">
+                {{ formatAmount({ netAmount: item.netAmount }) }}
+              </span>
+            </button>
+          </template>
+
+          <!-- Ghost rows -->
           <button
-            v-for="item in categoryRows"
-            :key="item.id"
-            class="hover:bg-muted/50 flex h-9 w-full items-center gap-2 rounded-md px-3 py-0.5 text-left transition-colors"
-            @click="navigateToTransactions({ categoryId: item.id })"
+            v-for="n in ghostSlotCount"
+            :key="`ghost-${n}`"
+            data-testid="cst-add-slot"
+            class="border-muted-foreground/30 hover:bg-muted/50 text-muted-foreground mx-1 flex h-9 items-center gap-2 rounded-md border border-dashed px-2 py-0.5 transition-colors"
+            @click="openPickerForAdd"
           >
-            <CategoryCircle :category-id="item.id" />
-
-            <span class="min-w-0 flex-1 truncate text-sm">{{ item.name }}</span>
-
-            <span class="text-amount shrink-0 text-sm" :class="getAmountClass({ netAmount: item.netAmount })">
-              {{ formatAmount({ netAmount: item.netAmount }) }}
-            </span>
+            <PlusIcon class="size-3.5" />
+            <span class="text-sm">{{ t('dashboard.widgets.categoryTracker.addCategory') }}</span>
           </button>
-        </template>
-
-        <!-- Ghost rows -->
-        <button
-          v-for="n in ghostSlotCount"
-          :key="`ghost-${n}`"
-          data-testid="cst-add-slot"
-          class="border-muted-foreground/30 hover:bg-muted/50 text-muted-foreground mx-1 flex h-9 items-center gap-2 rounded-md border border-dashed px-2 py-0.5 transition-colors"
-          @click="openPickerForAdd"
-        >
-          <PlusIcon class="size-3.5" />
-          <span class="text-sm">{{ t('dashboard.widgets.categoryTracker.addCategory') }}</span>
-        </button>
-      </div>
+        </div>
+      </ScrollArea>
     </template>
 
     <CategoryPickerDialog

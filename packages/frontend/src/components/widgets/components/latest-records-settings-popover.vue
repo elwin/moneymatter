@@ -29,6 +29,17 @@
                 </span>
                 <ChevronRightIcon class="text-muted-foreground size-4" />
               </button>
+
+              <div class="flex items-center justify-between gap-2 rounded-md px-2 py-2">
+                <span class="text-sm font-medium">{{ $t('widgets.latestRecords.settings.tagsStyleTitle') }}</span>
+                <PillTabs
+                  size="sm"
+                  :items="tagsVariantItems"
+                  :model-value="tagsVariant"
+                  :disabled="isUpdating"
+                  @update:model-value="onTagsVariantChange"
+                />
+              </div>
             </div>
           </div>
         </template>
@@ -123,8 +134,10 @@
 import type { DashboardWidgetConfig } from '@/api/user-settings';
 import SlidingPanels from '@/components/common/sliding-panels.vue';
 import { Button } from '@/components/lib/ui/button';
+import { PillTabs, type PillTabItem } from '@/components/lib/ui/pill-tabs';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/lib/ui/popover';
 import { Switch } from '@/components/lib/ui/switch';
+import { useNotificationCenter } from '@/components/notification-center';
 import { useIncludePlannedConfig, useIncludePlannedSaveError } from '@/components/widgets/use-include-planned-config';
 import { useUserSettings } from '@/composable/data-queries/user-settings';
 import { ArrowLeftIcon, ChevronRightIcon, SettingsIcon } from '@lucide/vue';
@@ -132,7 +145,7 @@ import type { Ref } from 'vue';
 import { computed, inject, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 
-import { readLatestRecordsExclusions } from '../latest-records-config';
+import { readLatestRecordsExclusions, readLatestRecordsTagsVariant } from '../latest-records-config';
 
 const PANEL_TRANSITION_DURATION = 320;
 
@@ -145,8 +158,14 @@ type View = 'main' | 'exclusions';
 const view = ref<View>('main');
 
 const exclusions = computed(() => readLatestRecordsExclusions({ widgetConfig: widgetConfigRef?.value }));
+const tagsVariant = computed(() => readLatestRecordsTagsVariant({ widgetConfig: widgetConfigRef?.value }));
+const tagsVariantItems = computed<PillTabItem[]>(() => [
+  { value: 'chips', label: t('widgets.latestRecords.settings.tagsStyleNames') },
+  { value: 'rails', label: t('widgets.latestRecords.settings.tagsStyleBars') },
+]);
 const { includePlanned } = useIncludePlannedConfig();
 const notifyIncludePlannedSaveError = useIncludePlannedSaveError();
+const { addErrorNotification } = useNotificationCenter();
 
 const exclusionsSummary = computed(() => {
   const excluded: string[] = [];
@@ -192,6 +211,14 @@ async function persistConfig(patch: Record<string, unknown>) {
   };
 
   await saveUserSettings({ ...settings, dashboard: { widgets } });
+}
+
+async function onTagsVariantChange(value: string) {
+  try {
+    await persistConfig({ tagsVariant: value });
+  } catch {
+    addErrorNotification(t('widgets.latestRecords.settings.tagsStyleSaveError'));
+  }
 }
 
 async function onExcludePlannedToggle(value: boolean) {

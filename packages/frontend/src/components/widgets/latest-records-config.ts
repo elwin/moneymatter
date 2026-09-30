@@ -1,4 +1,5 @@
 import type { DashboardWidgetConfig } from '@/api/user-settings';
+import type { TagsIndicatorVariant } from '@/components/common/tags-indicator.vue';
 import { TRANSACTION_TRANSFER_NATURE } from '@bt/shared/types';
 
 interface LatestRecordsExclusions {
@@ -41,3 +42,10 @@ export const buildLatestRecordsTransferNatures = ({
 
   return Object.values(TRANSACTION_TRANSFER_NATURE).filter((nature) => !excluded.includes(nature));
 };
+
+/** Chips stay the default; only an explicit `rails` opts in. */
+export const readLatestRecordsTagsVariant = ({
+  widgetConfig,
+}: {
+  widgetConfig: DashboardWidgetConfig | null | undefined;
+}): TagsIndicatorVariant => (widgetConfig?.config?.tagsVariant === 'rails' ? 'rails' : 'chips');

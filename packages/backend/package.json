@@ -33,6 +33,7 @@
     "@better-auth/passkey": "^1.6.30",
     "@coingecko/coingecko-typescript": "^5.1.1",
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "@napi-rs/canvas": "^0.1.100",
     "@polygon.io/client-js": "^7.4.0",
     "@sentry/node": "^10.32.1",
     "@types/cls-hooked": "^4.3.9",

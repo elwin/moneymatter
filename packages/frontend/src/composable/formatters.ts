@@ -1,4 +1,4 @@
-import { formatLargeNumber, formatUIAmount } from '@/js/helpers';
+import { formatCompactFiat, formatLargeNumber, formatUIAmount } from '@/js/helpers';
 import { useCurrenciesStore } from '@/stores';
 import { storeToRefs } from 'pinia';
 import { useI18n } from 'vue-i18n';
@@ -58,6 +58,9 @@ export const useFormatCurrency = () => {
 
   const formatWholeBaseCurrency = (amount: number) => formatBaseCurrency(amount, { fractionDigits: 0 });
 
+  const formatCompactBaseCurrency = ({ amount }: { amount: number }) =>
+    formatCompactFiat({ amount, currency: baseCurrency.value?.currency?.code });
+
   const formatAmountByCurrencyCode = (amount: number, currencyCode: string) =>
     formatUIAmount(amount, {
       currency: currencyCode,
@@ -111,6 +114,7 @@ export const useFormatCurrency = () => {
     formatWholeBaseCurrency,
     formatAmountByCurrencyCode,
     formatCompactAmount,
+    formatCompactBaseCurrency,
     getCurrencySymbol,
   };
 };

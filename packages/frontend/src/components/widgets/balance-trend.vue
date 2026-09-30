@@ -38,20 +38,20 @@
         </div>
 
         <!-- Right: Comparison -->
-        <div class="flex flex-col items-end gap-1">
-          <div class="flex items-center gap-1.5">
-            <span
-              class="text-sm font-semibold tracking-tight"
+        <div class="flex min-w-0 flex-1 flex-col items-end gap-1">
+          <div class="flex w-full items-center gap-1.5">
+            <FitAmount
+              :value="balancesDiffAbsolute"
+              signed
+              class="flex-1 text-right text-sm font-semibold tracking-tight"
               :class="{
                 'text-app-expense-color': balancesDiff < 0,
                 'text-success-text': balancesDiff > 0,
                 'text-muted-foreground': balancesDiff === 0,
               }"
-            >
-              {{ balancesDiffAbsolute > 0 ? '+' : '' }}{{ formatBaseCurrency(balancesDiffAbsolute) }}
-            </span>
+            />
             <span
-              class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold"
+              class="inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-xs font-semibold"
               :class="{
                 'bg-app-expense-color/15 text-app-expense-color': balancesDiff < 0,
                 'bg-success-text/15 text-success-text': balancesDiff > 0,
@@ -164,6 +164,7 @@ import {
   ChartTooltipHeader,
   ChartTooltipRow,
 } from '@/components/common/charts/chart-tooltip';
+import FitAmount from '@/components/common/fit-amount.vue';
 import SelectField from '@/components/fields/select-field.vue';
 import { useFormatCurrency } from '@/composable';
 import { getChartColors } from '@/composable/charts/chart-colors';

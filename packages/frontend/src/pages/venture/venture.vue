@@ -50,7 +50,7 @@ const onDealCreated = () => {
     </div>
 
     <Card v-else-if="deals.length === 0">
-      <CardContent class="flex flex-col items-center gap-3 py-12 text-center">
+      <CardContent class="flex flex-col items-center gap-3 py-12 text-center sm:py-12">
         <RocketIcon class="text-muted-foreground size-10" />
         <h3 class="text-lg font-medium">{{ $t('venture.deals.emptyTitle') }}</h3>
         <p class="text-muted-foreground max-w-md text-sm">

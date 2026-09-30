@@ -3,6 +3,7 @@ import {
   API_ERROR_CODES,
   type AccountExternalData,
   BANK_PROVIDER_TYPE,
+  type LinkResidualTarget,
   type RecordId,
 } from '@bt/shared/types';
 import { Money } from '@common/types/money';
@@ -13,7 +14,8 @@ import AccountGroup from '@models/accounts-groups/account-groups.model';
 import Accounts, { getAccountById } from '@models/accounts.model';
 import BankDataProviderConnections from '@models/bank-data-provider-connections.model';
 import { namespace } from '@models/connection';
-import { absorbLinkResidualIntoOpeningBalance } from '@services/accounts/absorb-link-residual';
+import { updateAccount } from '@services/accounts.service';
+import { absorbLinkResidual } from '@services/accounts/absorb-link-residual';
 import { assertNotDerivedBalanceAccount } from '@services/accounts/derived-balance-guard';
 import { bankProviderRegistry } from '@services/bank-data-providers';
 import { assertExternalAccountNotLinkedElsewhere } from '@services/bank-data-providers/connection/connect-selected-accounts';
@@ -35,20 +37,21 @@ interface LinkAccountToBankConnectionPayload {
   connectionId: string;
   externalAccountId: string;
   userId: number;
+  residualTarget?: LinkResidualTarget;
 }
 
 interface LinkResult {
   account: Accounts;
-  balanceAdjustmentTransaction: null;
   balanceDifference: number;
 }
 
 /**
  * Swaps a system account to the provider's type, syncs the provider's
- * transactions, and absorbs the unexplained balance residual into the opening
- * balance. Queue-synced providers (metadata.features.queuedSync) get the bank
- * balance written inline and the sync plus residual absorb deferred to the
- * queue via the `pendingAbsorb` marker.
+ * transactions, and puts the unexplained balance residual where
+ * `residualTarget` says (opening balance or one adjustment row). Queue-synced
+ * providers (metadata.features.queuedSync) get the bank balance written inline
+ * and the sync plus residual absorb deferred to the queue via the
+ * `pendingAbsorb` marker.
  */
 export const linkAccountToBankConnection = withTransaction(
   async ({
@@ -56,6 +59,7 @@ export const linkAccountToBankConnection = withTransaction(
     connectionId,
     externalAccountId,
     userId,
+    residualTarget = 'opening-balance',
   }: LinkAccountToBankConnectionPayload): Promise<LinkResult> => {
     const account = await getAccountById({ id: accountId, userId });
 
@@ -118,6 +122,19 @@ export const linkAccountToBankConnection = withTransaction(
       externalId: externalAccountId,
     });
 
+    // Stored balances include the credit limit. Adopting the bank's limit shifts
+    // the stored balance by the same delta so displayed history stays put.
+    const newCreditLimit = Money.fromCents(Number(externalAccount.metadata?.creditLimit) || 0);
+    if (!newCreditLimit.equals(account.creditLimit)) {
+      await updateAccount({
+        id: accountId,
+        userId,
+        creditLimit: newCreditLimit,
+        currentBalance: account.currentBalance.add(newCreditLimit.subtract(account.creditLimit)),
+      });
+      await account.reload();
+    }
+
     const systemBalance = account.currentBalance.toCents();
     const externalBalance = externalAccount.balance;
     const balanceDifference = externalBalance - systemBalance;
@@ -140,6 +157,7 @@ export const linkAccountToBankConnection = withTransaction(
           externalBalance,
           difference: balanceDifference,
           adjustmentTransactionId: null,
+          residualTarget,
           ...(isQueuedSyncProvider ? { pendingAbsorb: true } : {}),
         },
       },
@@ -209,7 +227,6 @@ export const linkAccountToBankConnection = withTransaction(
 
       return {
         account: updatedAccount,
-        balanceAdjustmentTransaction: null,
         balanceDifference,
       };
     }
@@ -220,11 +237,11 @@ export const linkAccountToBankConnection = withTransaction(
       accountId,
     });
 
-    const absorbedResidual = await absorbLinkResidualIntoOpeningBalance({ accountId, userId });
+    const residualOutcome = await absorbLinkResidual({ accountId, userId });
 
     const updatedAccount = (await Accounts.findByPk(accountId))!;
 
-    if (absorbedResidual !== 0) {
+    if (Object.keys(residualOutcome).length > 0) {
       const currentExternalData = (updatedAccount.externalData || {}) as AccountExternalData;
       const connectionMeta = currentExternalData.bankConnection ?? updatedExternalData.bankConnection!;
 
@@ -233,7 +250,7 @@ export const linkAccountToBankConnection = withTransaction(
           ...currentExternalData,
           bankConnection: {
             ...connectionMeta,
-            balanceReconciliation: { ...connectionMeta.balanceReconciliation, absorbedResidual },
+            balanceReconciliation: { ...connectionMeta.balanceReconciliation, ...residualOutcome },
           },
         },
       });
@@ -241,7 +258,6 @@ export const linkAccountToBankConnection = withTransaction(
 
     return {
       account: updatedAccount,
-      balanceAdjustmentTransaction: null,
       balanceDifference,
     };
   },

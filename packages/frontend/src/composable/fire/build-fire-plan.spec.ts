@@ -326,6 +326,42 @@ describe('buildFirePlan milestones', () => {
   });
 });
 
+describe('buildFirePlan reached milestone dates', () => {
+  const history = ({ values }: { values: number[] }) =>
+    values.map((investments, idx) => point({ date: `2026-${String(idx + 1).padStart(2, '0')}-01`, investments }));
+
+  it('dates a reached milestone by the first history month at or above its amount', () => {
+    const { milestones } = build({
+      fire: { ...READY, inflationPct: 0 },
+      points: history({ values: [100_000, 200_000, 260_000, 400_000, 550_000, 550_000, 550_000, 550_000, 600_000] }),
+    });
+    expect(milestones[0]).toMatchObject({ pct: 25, reached: true, hitMonth: 0 });
+    expect(milestones[0]!.date).toEqual(parseISO('2026-03-01'));
+    expect(milestones[1]!.date).toEqual(parseISO('2026-05-01'));
+    expect(milestones[2]!.reached).toBe(false);
+    expect(milestones[2]!.date).not.toBeNull();
+  });
+
+  it('compares inflation-adjusted history, so an older month can be the crossing', () => {
+    // 246k in Feb is 250k+ in Sep money at 3% inflation; nominally the 250k line is only crossed in Mar.
+    const { milestones } = build({
+      fire: READY,
+      points: history({ values: [100_000, 246_000, 252_000, 400_000, 600_000] }),
+    });
+    expect(milestones[0]!.date).toEqual(parseISO('2026-02-01'));
+  });
+
+  it('has no date when the milestone was already reached before history begins', () => {
+    const { milestones } = build({ fire: READY, points: history({ values: [300_000, 320_000] }) });
+    expect(milestones[0]).toMatchObject({ reached: true, date: null });
+  });
+
+  it('has no date without history, so the current month is never reported as the crossing', () => {
+    const { milestones } = build({ fire: READY, points: [point({ investments: 300_000 })] });
+    expect(milestones[0]).toMatchObject({ reached: true, date: null });
+  });
+});
+
 describe('buildFirePlan loans as a threshold shift', () => {
   const fire: FireSettings = {
     annualSpendingOverride: 40_000,

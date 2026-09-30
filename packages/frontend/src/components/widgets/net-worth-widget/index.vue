@@ -1,5 +1,6 @@
 <script lang="ts" setup>
 import { ChartTooltipHeader, ChartTooltipRow } from '@/components/common/charts/chart-tooltip';
+import FitAmount from '@/components/common/fit-amount.vue';
 import ResponsiveTooltip from '@/components/common/responsive-tooltip.vue';
 import { buttonVariants } from '@/components/lib/ui/button';
 import { DesktopOnlyTooltip } from '@/components/lib/ui/tooltip';
@@ -82,14 +83,6 @@ const formattedDelta = computed(() => {
   if (currentDelta.value === null) return NO_VALUE_LABEL;
   return `${isPositiveDelta.value ? '+' : ''}${formatBaseCurrency(animatedDelta.value)}`;
 });
-
-const formattedStart = computed(() =>
-  startNetWorth.value === null ? NO_VALUE_LABEL : formatBaseCurrency(startNetWorth.value),
-);
-
-const formattedEnd = computed(() =>
-  endNetWorth.value === null ? NO_VALUE_LABEL : formatBaseCurrency(endNetWorth.value),
-);
 
 const formattedGrowth = computed(() => {
   const percent = growthPercent.value;
@@ -235,18 +228,20 @@ const trendBars = computed(() => {
             <div class="text-muted-foreground mb-1 text-[11px] font-medium tracking-wider uppercase">
               {{ $t('dashboard.widgets.netWorth.start') }}
             </div>
-            <div class="text-amount text-sm" :class="{ 'text-muted-foreground': startNetWorth === null }">
-              {{ formattedStart }}
+            <div v-if="startNetWorth === null" class="text-amount text-muted-foreground text-sm">
+              {{ NO_VALUE_LABEL }}
             </div>
+            <FitAmount v-else :value="startNetWorth" class="text-amount text-sm" />
           </div>
 
           <div class="rounded-lg border p-3">
             <div class="text-muted-foreground mb-1 text-[11px] font-medium tracking-wider uppercase">
               {{ $t('dashboard.widgets.netWorth.end') }}
             </div>
-            <div class="text-amount text-sm" :class="{ 'text-muted-foreground': endNetWorth === null }">
-              {{ formattedEnd }}
+            <div v-if="endNetWorth === null" class="text-amount text-muted-foreground text-sm">
+              {{ NO_VALUE_LABEL }}
             </div>
+            <FitAmount v-else :value="endNetWorth" class="text-amount text-sm" />
           </div>
 
           <div class="rounded-lg border p-3">

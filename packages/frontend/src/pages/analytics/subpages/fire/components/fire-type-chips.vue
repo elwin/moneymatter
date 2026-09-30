@@ -123,7 +123,7 @@ import { createReusableTemplate, useLocalStorage } from '@vueuse/core';
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 
-import { formatProgressPct, useFormatFireCompact } from '@/composable/fire/fire-display';
+import { formatProgressPct } from '@/composable/fire/fire-display';
 
 import type { FireFocusField } from './fire-assumptions.vue';
 
@@ -133,8 +133,7 @@ const props = defineProps<{ plan: FirePlan; settings: ResolvedFireSettings }>();
 const emit = defineEmits<{ focusField: [field: ChipField]; selectTarget: [type: FireTargetType] }>();
 
 const { t } = useI18n();
-const { formatWholeBaseCurrency } = useFormatCurrency();
-const formatCompact = useFormatFireCompact();
+const { formatWholeBaseCurrency, formatCompactBaseCurrency: formatCompact } = useFormatCurrency();
 
 const toPct = ({ multiplier }: { multiplier: number }) => Math.round(multiplier * 100);
 

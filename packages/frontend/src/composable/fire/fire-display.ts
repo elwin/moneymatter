@@ -1,26 +1,8 @@
-import { formatLargeNumber } from '@/js/helpers';
 import { toLocalNumber } from '@/js/helpers/formatters';
-import { useCurrenciesStore } from '@/stores';
-import { storeToRefs } from 'pinia';
 
 import type { FireChart } from './build-fire-plan';
 
 const NOT_REACHED_CEILING_PCT = 99.9;
-const COMPACT_SIGNIFICANT_DIGITS = 3;
-
-// Rounds before the suffix is picked, so 999,600 reads "$1M" rather than "$1,000K".
-export const formatFireCompact = ({ amount, currency }: { amount: number; currency?: string }) =>
-  formatLargeNumber(Number(amount.toPrecision(COMPACT_SIGNIFICANT_DIGITS)), {
-    isFiat: true,
-    currency,
-    thousandSuffix: 'K',
-  });
-
-export const useFormatFireCompact = () => {
-  const { baseCurrency } = storeToRefs(useCurrenciesStore());
-  return ({ amount }: { amount: number }) =>
-    formatFireCompact({ amount, currency: baseCurrency.value?.currency?.code });
-};
 
 export const displayProgressPct = ({ ratio, reached }: { ratio: number; reached: boolean }): number => {
   const pct = Math.floor(Math.max(0, ratio) * 1000) / 10;

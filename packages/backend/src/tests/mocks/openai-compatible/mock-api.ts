@@ -168,6 +168,37 @@ export const getCustomEndpointContentMock = ({
     completionResponse({ model: await requestedModel({ request }), content }),
   );
 
+/**
+ * vLLM's `/chat/completions`: rejects OpenAI's `file` content part (how the SDK sends a PDF)
+ * and otherwise answers with `content`, handing each request body to `onBody`.
+ */
+export const getCustomEndpointVllmMock = ({
+  content,
+  onBody,
+  baseUrl = CUSTOM_ENDPOINT_BASE_URL,
+}: {
+  content: string;
+  onBody?: (body: string) => void;
+  baseUrl?: string;
+}) =>
+  http.post(chatCompletionsUrl({ baseUrl }), async ({ request }) => {
+    const body = await request.text();
+    onBody?.(body);
+    if (body.includes('"type":"file"')) {
+      return HttpResponse.json(
+        {
+          error: {
+            message: "Unsupported chat content part type: 'file'. (parameter=type, value=file)",
+            type: 'BadRequestError',
+            code: 400,
+          },
+        },
+        { status: 400 },
+      );
+    }
+    return completionResponse({ model: (JSON.parse(body) as { model?: string }).model ?? '', content });
+  });
+
 /** Always answers 401, whatever key the request carries. */
 export const getCustomEndpointAuthErrorMock = ({ baseUrl = CUSTOM_ENDPOINT_BASE_URL }: { baseUrl?: string } = {}) =>
   http.post(chatCompletionsUrl({ baseUrl }), () => authErrorResponse());

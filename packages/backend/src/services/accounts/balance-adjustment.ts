@@ -32,6 +32,41 @@ interface AdjustAccountBalanceResult {
   newBalance: Money;
 }
 
+/** Creates the row that shifts an account's balance by a signed, non-zero `amountDelta`. */
+export const createBalanceAdjustmentTransaction = async ({
+  userId,
+  accountId,
+  amountDelta,
+  time,
+  note,
+}: {
+  userId: number;
+  accountId: string;
+  amountDelta: Money;
+  time: Date;
+  note?: string;
+}): Promise<Transactions> => {
+  const defaultCategoryId = await getUserDefaultCategory({ id: userId });
+
+  const [transaction] = await createTransaction({
+    userId,
+    accountId,
+    amount: amountDelta.abs(),
+    transactionType: amountDelta.isPositive() ? TRANSACTION_TYPES.income : TRANSACTION_TYPES.expense,
+    transferNature: TRANSACTION_TRANSFER_NATURE.transfer_out_wallet,
+    accountType: ACCOUNT_TYPES.system,
+    paymentType: PAYMENT_TYPES.bankTransfer,
+    note: note ?? t({ key: 'balanceAdjustment.defaultNote' }),
+    categoryId: defaultCategoryId,
+    time,
+    // `transfer_out_wallet` alone can't identify adjustments — imports and
+    // cross-user transfer conversions produce it too, so mark explicitly.
+    externalData: { balanceAdjustment: true },
+  });
+
+  return transaction;
+};
+
 export const adjustAccountBalance = withTransaction(
   async ({
     userId,
@@ -67,24 +102,13 @@ export const adjustAccountBalance = withTransaction(
     }
 
     const effectiveTime = time ?? new Date();
-    const transactionType = diff.isPositive() ? TRANSACTION_TYPES.income : TRANSACTION_TYPES.expense;
 
-    const defaultCategoryId = await getUserDefaultCategory({ id: userId });
-
-    const [transaction] = await createTransaction({
+    const transaction = await createBalanceAdjustmentTransaction({
       userId,
       accountId,
-      amount: diff.abs(),
-      transactionType,
-      transferNature: TRANSACTION_TRANSFER_NATURE.transfer_out_wallet,
-      accountType: ACCOUNT_TYPES.system,
-      paymentType: PAYMENT_TYPES.bankTransfer,
-      note: note ?? t({ key: 'balanceAdjustment.defaultNote' }),
-      categoryId: defaultCategoryId,
+      amountDelta: diff,
       time: effectiveTime,
-      // `transfer_out_wallet` alone can't identify adjustments — imports and
-      // cross-user transfer conversions produce it too, so mark explicitly.
-      externalData: { balanceAdjustment: true },
+      note,
     });
 
     // Vehicles aren't real accounts in the usual sense — they're an asset whose
@@ -118,7 +142,7 @@ export const adjustAccountBalance = withTransaction(
     }
 
     return {
-      transaction: transaction ?? null,
+      transaction,
       previousBalance,
       newBalance,
     };

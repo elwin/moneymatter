@@ -101,7 +101,7 @@ POST /bank-data-providers/enablebanking/callback
 
 - **No queue system** - synchronous, direct fetching
 - Determines date range:
-  - Existing account: from the most recent transaction to now, pulled back to `externalData.oldestPendingDate` (the oldest PDNG/HOLD payload the previous sync saw) so a pending payment that books after a newer row was stored is still fetched. Cleared once the bank reports nothing pending
+  - Existing account: from the most recent transaction to now, pulled back to `externalData.oldestPendingDate` (the oldest PDNG/HOLD payload the previous sync saw) so a pending payment that books after a newer row was stored is still fetched. Cleared once the bank reports nothing pending. Also pulled back to the oldest stored PDNG/HOLD row dated within the last 14 days, for banks that stop listing a payment as pending before they list its booked copy
   - New account: negotiates the lookback with the bank — 1095 days first, then 730, 365 and 90 as the ASPSP rejects each window
 - Automatic pagination via `continuation_key`
 - Drops PDNG/HOLD payloads unless the user enabled the `importPendingBankTransactions` setting (off by default). Already-stored pending rows still book or get revoked through the matcher

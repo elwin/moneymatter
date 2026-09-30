@@ -202,19 +202,27 @@
           </tr>
 
           <template v-for="virtualRow in virtualRows" :key="rowKey(virtualRow.index)">
+            <tr v-if="rows[virtualRow.index] === PLANNED_HEADER" class="h-10">
+              <td :colspan="columnCount" class="border-b p-0">
+                <PlannedRowsToggle
+                  v-model="isPlannedExpanded"
+                  :count="plannedCount"
+                  class="border-l-primary sticky left-0 border-l-[3px]"
+                />
+              </td>
+            </tr>
             <TransactionTableRow
-              v-if="displayTransactions[virtualRow.index]"
-              :tx="displayTransactions[virtualRow.index]!"
+              v-else-if="txAt(virtualRow.index)"
+              :tx="txAt(virtualRow.index)!"
               :visible-columns="visibleColumns"
               :index="virtualRow.index"
-              :is-selected="isTransactionSelected(displayTransactions[virtualRow.index]!.id)"
-              :is-selectable="isTransactionSelectable(displayTransactions[virtualRow.index]!)"
-              :unselectable-reason="getUnselectableReason(displayTransactions[virtualRow.index]!)"
-              :payee="payeeById.get(displayTransactions[virtualRow.index]!.payeeId ?? '')"
+              :is-selected="isTransactionSelected(txAt(virtualRow.index)!.id)"
+              :is-selectable="isTransactionSelectable(txAt(virtualRow.index)!)"
+              :unselectable-reason="getUnselectableReason(txAt(virtualRow.index)!)"
+              :payee="payeeById.get(txAt(virtualRow.index)!.payeeId ?? '')"
               :cell-states="cellStates"
-              :editing-column="
-                editTarget?.tx.id === displayTransactions[virtualRow.index]!.id ? editTarget.column : null
-              "
+              :row-click-selects="rowClickSelects"
+              :editing-column="editTarget?.tx.id === txAt(virtualRow.index)!.id ? editTarget.column : null"
               @record-click="
                 editTarget = null;
                 handleRecordClick($event);
@@ -292,7 +300,9 @@ import { ScrollArea } from '@/components/lib/ui/scroll-area';
 import { DesktopOnlyTooltip } from '@/components/lib/ui/tooltip';
 import BulkActionDialogs from '@/components/transactions-list/bulk-action-dialogs.vue';
 import SelectionTotals from '@/components/transactions-list/selection-totals.vue';
+import PlannedRowsToggle from '@/components/transactions-list/planned-rows-toggle.vue';
 import TransactionDetailsModal from '@/components/transactions-list/transaction-details-modal.vue';
+import { PLANNED_HEADER, useCollapsedPlanned } from '@/components/transactions-list/use-collapsed-planned';
 import { useManageTransactionDialog } from '@/components/transactions-list/use-manage-transaction-dialog';
 import { useTransactionsDisplay } from '@/components/transactions-list/use-transactions-display';
 import { usePayeeLookup } from '@/composable/data-queries/payees';
@@ -346,6 +356,7 @@ const props = defineProps<{
   isMobileMode: boolean;
   selectionScopeKey?: string;
   alwaysShowLockedCells?: boolean;
+  rowClickSelects?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -369,6 +380,14 @@ const { displayTransactions } = useTransactionsDisplay({
   contentFiltersActive: () => true,
 }) as { displayTransactions: ComputedRef<TransactionModel[]> };
 
+const {
+  rows,
+  itemAt: txAt,
+  visibleItems,
+  isPlannedExpanded,
+  plannedCount,
+} = useCollapsedPlanned({ items: displayTransactions, isPlanned: (tx) => tx.isPlanned });
+
 // Checkbox and details columns on top of the configurable ones.
 const columnCount = computed(() => props.visibleColumns.length + 2);
 
@@ -390,7 +409,7 @@ const {
 
 // Selection, eligibility, bulk mutations and dialog state — shared with the list view.
 const bulkActions = useBulkTransactionActions({
-  getTransactions: () => displayTransactions.value,
+  getTransactions: () => visibleItems.value,
   getScopeKey: () => props.selectionScopeKey,
 });
 const {
@@ -442,7 +461,7 @@ const initialSkeletonRowCount = computed(() =>
 
 const virtualizer = useVirtualizer(
   computed(() => ({
-    count: displayTransactions.value.length + (props.hasNextPage ? 1 : 0),
+    count: rows.value.length + (props.hasNextPage ? 1 : 0),
     getScrollElement,
     estimateSize: () => ROW_HEIGHT_PX,
     overscan: 15,
@@ -550,8 +569,9 @@ watch(displayTransactions, (list) => {
 });
 
 const rowKey = (index: number) => {
-  const tx = displayTransactions.value[index];
-  return tx ? `${tx.id}-${tx.updatedAt}` : `loader-${index}`;
+  const row = rows.value[index];
+  if (row === PLANNED_HEADER) return 'planned-header';
+  return row ? `${row.id}-${row.updatedAt}` : `loader-${index}`;
 };
 
 // Infinite scroll: request the next page once the loader row becomes visible.
@@ -559,7 +579,7 @@ watchEffect(() => {
   const lastItem = virtualRows.value[virtualRows.value.length - 1];
   if (!lastItem) return;
 
-  if (lastItem.index >= displayTransactions.value.length - 1 && props.hasNextPage && !props.isFetchingNextPage) {
+  if (lastItem.index >= rows.value.length - 1 && props.hasNextPage && !props.isFetchingNextPage) {
     emit('fetch-next-page');
   }
 });

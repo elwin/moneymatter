@@ -11,6 +11,7 @@ export default createController(
     body: z.object({
       connectionId: recordId(),
       externalAccountId: z.string(),
+      residualTarget: z.enum(['opening-balance', 'adjustment']).optional(),
     }),
   }),
   async ({ user, params, body }) => {
@@ -18,6 +19,7 @@ export default createController(
       accountId: params.id,
       connectionId: body.connectionId,
       externalAccountId: body.externalAccountId,
+      residualTarget: body.residualTarget,
       userId: user.id,
     });
 
@@ -25,7 +27,6 @@ export default createController(
       data: {
         account: result.account,
         balanceDifference: result.balanceDifference,
-        balanceAdjustmentTransaction: null,
         message: 'Account linked successfully.',
       },
     };

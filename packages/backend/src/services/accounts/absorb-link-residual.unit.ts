@@ -26,6 +26,15 @@ jest.mock('@models/balances.model', () => ({
   __esModule: true,
   default: { setTodayRowToSpot: jest.fn() },
 }));
+// Import-time stubs: the real modules pull the Redis client and the transaction-create graph.
+jest.mock('@services/accounts/balance-adjustment', () => ({
+  __esModule: true,
+  createBalanceAdjustmentTransaction: jest.fn(),
+}));
+jest.mock('@services/bank-data-providers/utils/write-bank-balance-with-history', () => ({
+  __esModule: true,
+  writeBankBalanceWithHistory: jest.fn(),
+}));
 jest.mock('@js/utils/logger', () => ({
   __esModule: true,
   logger: { error: jest.fn(), info: jest.fn(), warn: jest.fn(), debug: jest.fn() },
@@ -51,7 +60,7 @@ import Accounts from '@models/accounts.model';
 import Balances from '@models/balances.model';
 import Transactions from '@models/transactions.model';
 
-import { absorbLinkResidualIntoOpeningBalance, runPendingLinkAbsorb } from './absorb-link-residual';
+import { absorbLinkResidual, runPendingLinkAbsorb } from './absorb-link-residual';
 import { restampRefInitialBalance } from './restamp-ref-initial-balance';
 /* eslint-enable import/first */
 
@@ -124,16 +133,16 @@ beforeEach(() => {
   setTodayRowToSpotMock.mockResolvedValue(undefined as never);
 });
 
-describe('absorbLinkResidualIntoOpeningBalance', () => {
-  it('returns 0 and writes nothing when the account is missing', async () => {
+describe('absorbLinkResidual', () => {
+  it('returns no outcome and writes nothing when the account is missing', async () => {
     findOneMock.mockResolvedValue(null as never);
 
-    const result = await absorbLinkResidualIntoOpeningBalance({
+    const result = await absorbLinkResidual({
       accountId: generateRandomRecordId(),
       userId: USER_ID,
     });
 
-    expect(result).toBe(0);
+    expect(result).toEqual({});
     expect(loggerErrorMock).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ code: 'ACCOUNT_LINK_RESIDUAL_ACCOUNT_MISSED' }),
@@ -144,7 +153,7 @@ describe('absorbLinkResidualIntoOpeningBalance', () => {
     expect(setTodayRowToSpotMock).not.toHaveBeenCalled();
   });
 
-  it('returns 0 and writes nothing when the ledger identity already holds', async () => {
+  it('returns no outcome and writes nothing when the ledger identity already holds', async () => {
     const accountId = generateRandomRecordId();
     findOneMock.mockResolvedValue(
       buildAccount({
@@ -155,9 +164,9 @@ describe('absorbLinkResidualIntoOpeningBalance', () => {
     );
     mockSignedSum(Money.fromDecimal(100).toCents());
 
-    const result = await absorbLinkResidualIntoOpeningBalance({ accountId, userId: USER_ID });
+    const result = await absorbLinkResidual({ accountId, userId: USER_ID });
 
-    expect(result).toBe(0);
+    expect(result).toEqual({});
     expect(accountsUpdateMock).not.toHaveBeenCalled();
     expect(restampMock).not.toHaveBeenCalled();
     expect(setTodayRowToSpotMock).not.toHaveBeenCalled();
@@ -174,9 +183,9 @@ describe('absorbLinkResidualIntoOpeningBalance', () => {
     findOneMock.mockResolvedValueOnce(account as never).mockResolvedValueOnce(restampedRow as never);
     mockSignedSum(Money.fromDecimal(100).toCents());
 
-    const result = await absorbLinkResidualIntoOpeningBalance({ accountId, userId: USER_ID });
+    const result = await absorbLinkResidual({ accountId, userId: USER_ID });
 
-    expect(result).toBe(Money.fromDecimal(50).toCents());
+    expect(result).toEqual({ absorbedResidual: Money.fromDecimal(50).toCents() });
     expect(accountsUpdateMock).toHaveBeenCalledTimes(1);
     expect(lastUpdatePayload().initialBalance.toCents()).toBe(Money.fromDecimal(100).toCents());
     expect(accountsUpdateMock.mock.calls[0]![1]).toEqual(
@@ -196,9 +205,9 @@ describe('absorbLinkResidualIntoOpeningBalance', () => {
     findOneMock.mockResolvedValue(account as never);
     mockSignedSum(Money.fromDecimal(100).toCents());
 
-    const result = await absorbLinkResidualIntoOpeningBalance({ accountId, userId: USER_ID });
+    const result = await absorbLinkResidual({ accountId, userId: USER_ID });
 
-    expect(result).toBe(Money.fromDecimal(-30).toCents());
+    expect(result).toEqual({ absorbedResidual: Money.fromDecimal(-30).toCents() });
     expect(lastUpdatePayload().initialBalance.toCents()).toBe(Money.fromDecimal(20).toCents());
     expect(restampMock).toHaveBeenCalledTimes(1);
   });
@@ -214,9 +223,9 @@ describe('absorbLinkResidualIntoOpeningBalance', () => {
     );
     queryMock.mockResolvedValue([] as never);
 
-    const result = await absorbLinkResidualIntoOpeningBalance({ accountId, userId: USER_ID });
+    const result = await absorbLinkResidual({ accountId, userId: USER_ID });
 
-    expect(result).toBe(Money.fromDecimal(60).toCents());
+    expect(result).toEqual({ absorbedResidual: Money.fromDecimal(60).toCents() });
     expect(lastUpdatePayload().initialBalance.toCents()).toBe(Money.fromDecimal(70).toCents());
   });
 
@@ -232,7 +241,7 @@ describe('absorbLinkResidualIntoOpeningBalance', () => {
     mockSignedSum(Money.fromDecimal(100).toCents());
     restampMock.mockResolvedValue('failed');
 
-    await expect(absorbLinkResidualIntoOpeningBalance({ accountId, userId: USER_ID })).rejects.toThrow(UnexpectedError);
+    await expect(absorbLinkResidual({ accountId, userId: USER_ID })).rejects.toThrow(UnexpectedError);
 
     expect(accountsUpdateMock).toHaveBeenCalledTimes(1);
     expect(findOneMock).toHaveBeenCalledTimes(1);
@@ -253,9 +262,9 @@ describe('absorbLinkResidualIntoOpeningBalance', () => {
       mockSignedSum(Money.fromDecimal(100).toCents());
       restampMock.mockResolvedValue(outcome);
 
-      const result = await absorbLinkResidualIntoOpeningBalance({ accountId, userId: USER_ID });
+      const result = await absorbLinkResidual({ accountId, userId: USER_ID });
 
-      expect(result).toBe(Money.fromDecimal(50).toCents());
+      expect(result).toEqual({ absorbedResidual: Money.fromDecimal(50).toCents() });
       expect(setTodayRowToSpotMock).toHaveBeenCalledTimes(1);
     },
   );
@@ -270,9 +279,9 @@ describe('absorbLinkResidualIntoOpeningBalance', () => {
     findOneMock.mockResolvedValueOnce(account as never).mockResolvedValueOnce(null as never);
     mockSignedSum(Money.fromDecimal(100).toCents());
 
-    const result = await absorbLinkResidualIntoOpeningBalance({ accountId, userId: USER_ID });
+    const result = await absorbLinkResidual({ accountId, userId: USER_ID });
 
-    expect(result).toBe(Money.fromDecimal(50).toCents());
+    expect(result).toEqual({ absorbedResidual: Money.fromDecimal(50).toCents() });
     expect(loggerErrorMock).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ code: 'ACCOUNT_LINK_RESIDUAL_REREAD_MISSED' }),
@@ -328,7 +337,7 @@ describe('runPendingLinkAbsorb', () => {
 
     const result = await runPendingLinkAbsorb({ accountId, userId: USER_ID });
 
-    expect(result).toBe(Money.fromDecimal(50).toCents());
+    expect(result).toEqual({ absorbedResidual: Money.fromDecimal(50).toCents() });
     expect(fresh.update).toHaveBeenCalledTimes(1);
     expect(fresh.update.mock.calls[0]![0]).toEqual({
       externalData: {
@@ -370,7 +379,7 @@ describe('runPendingLinkAbsorb', () => {
 
     const result = await runPendingLinkAbsorb({ accountId, userId: USER_ID });
 
-    expect(result).toBe(0);
+    expect(result).toEqual({});
     expect(accountsUpdateMock).not.toHaveBeenCalled();
     expect(fresh.update).toHaveBeenCalledTimes(1);
     const written = fresh.update.mock.calls[0]![0] as { externalData: AccountExternalData };
@@ -396,7 +405,7 @@ describe('runPendingLinkAbsorb', () => {
 
     const result = await runPendingLinkAbsorb({ accountId, userId: USER_ID });
 
-    expect(result).toBe(Money.fromDecimal(50).toCents());
+    expect(result).toEqual({ absorbedResidual: Money.fromDecimal(50).toCents() });
     expect(pending.update).not.toHaveBeenCalled();
   });
 
@@ -418,7 +427,7 @@ describe('runPendingLinkAbsorb', () => {
 
     const result = await runPendingLinkAbsorb({ accountId, userId: USER_ID });
 
-    expect(result).toBe(Money.fromDecimal(50).toCents());
+    expect(result).toEqual({ absorbedResidual: Money.fromDecimal(50).toCents() });
     expect(fresh.update).not.toHaveBeenCalled();
   });
 });

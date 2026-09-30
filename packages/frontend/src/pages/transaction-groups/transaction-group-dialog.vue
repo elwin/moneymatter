@@ -17,7 +17,7 @@ import { useFormatCurrency } from '@/composable/formatters';
 import EditGroupDialog from './edit-group-dialog.vue';
 
 const { t } = useI18n();
-const { formatBaseCurrency } = useFormatCurrency();
+const { formatCompactBaseCurrency } = useFormatCurrency();
 
 const props = defineProps<{
   open?: boolean;
@@ -195,10 +195,10 @@ const summary = computed(() => {
               {{ t('transactionGroups.groupDialog.summary.net') }}
             </p>
             <p
-              class="text-lg font-semibold"
+              class="text-lg font-semibold whitespace-nowrap"
               :class="summary.net >= 0 ? 'text-app-income-color' : 'text-app-expense-color'"
             >
-              {{ formatBaseCurrency(summary.net) }}
+              {{ formatCompactBaseCurrency({ amount: summary.net }) }}
             </p>
           </div>
           <template v-if="summary.hasBothTypes">
@@ -206,13 +206,17 @@ const summary = computed(() => {
               <p class="text-muted-foreground text-xs">
                 {{ t('transactionGroups.groupDialog.summary.moneyIn') }}
               </p>
-              <p class="text-app-income-color text-lg font-semibold">{{ formatBaseCurrency(summary.income) }}</p>
+              <p class="text-app-income-color text-lg font-semibold whitespace-nowrap">
+                {{ formatCompactBaseCurrency({ amount: summary.income }) }}
+              </p>
             </div>
             <div class="bg-muted/30 px-4 py-2.5">
               <p class="text-muted-foreground text-xs">
                 {{ t('transactionGroups.groupDialog.summary.moneyOut') }}
               </p>
-              <p class="text-app-expense-color text-lg font-semibold">{{ formatBaseCurrency(summary.expense) }}</p>
+              <p class="text-app-expense-color text-lg font-semibold whitespace-nowrap">
+                {{ formatCompactBaseCurrency({ amount: summary.expense }) }}
+              </p>
             </div>
           </template>
         </div>

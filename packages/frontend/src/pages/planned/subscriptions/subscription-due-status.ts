@@ -25,3 +25,20 @@ export const isSubscriptionOverdue = ({
   if (days === null) return false;
   return days < 0;
 };
+
+export const DUE_SOON_DAYS = 3;
+
+export type SubscriptionDueStatus = 'overdue' | 'dueSoon' | null;
+
+export const getSubscriptionDueStatus = ({
+  subscription,
+  now,
+}: {
+  subscription: SubscriptionListItem;
+  now: Date;
+}): SubscriptionDueStatus => {
+  if (isSubscriptionOverdue({ subscription, now })) return 'overdue';
+  if (!subscription.nextDueDate) return null;
+  const days = daysUntilDue({ dueDate: subscription.nextDueDate, now });
+  return days !== null && days <= DUE_SOON_DAYS ? 'dueSoon' : null;
+};
