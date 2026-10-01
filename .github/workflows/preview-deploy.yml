@@ -38,7 +38,7 @@ jobs:
           [ "$state" = "OPEN" ] || { echo "PR #$PR_NUMBER is $state, not deploying"; exit 1; }
 
       - name: Checkout repository
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # ── Disk space check ──────────────────────────────────────────────
       - name: Check VPS disk space
@@ -110,7 +110,7 @@ jobs:
           script: mkdir -p "$VPS_PREVIEW_BASE_PATH/pr-$PR_NUMBER"
 
       - name: Copy compose file to VPS
-        uses: appleboy/scp-action@917f8b81dfc1ccd331fef9e2d61bdc6c8be94634 # v0.1.7
+        uses: appleboy/scp-action@ff85246acaad7bdce478db94a363cd2bf7c90345 # v1.0.0
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USERNAME }}
@@ -326,7 +326,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - id: prepare-env
         uses: ./.github/actions/prepare-local-env
@@ -428,7 +428,7 @@ jobs:
 
     steps:
       - name: Download shard statuses
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         # Tolerate missing artifacts (e.g. a shard died before uploading);
         # the summary below renders such shards as "no status"
         continue-on-error: true

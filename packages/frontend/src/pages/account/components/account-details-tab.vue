@@ -7,13 +7,14 @@ import { useAccountAccess } from '@/composable/use-account-access';
 import { useAccountCurrencyCode } from '@/composable/use-account-currency-code';
 import { toLocalCurrencyNumber } from '@/js/helpers';
 import { useCurrenciesStore } from '@/stores';
-import { AccountModel, isDedicatedFlowAccountCategory } from '@bt/shared/types';
+import { ACCOUNT_TYPES, AccountModel, isDedicatedFlowAccountCategory } from '@bt/shared/types';
 import { ChevronDownIcon, ChevronUpIcon } from '@lucide/vue';
 import { storeToRefs } from 'pinia';
 import { computed, defineAsyncComponent, ref, toRef } from 'vue';
 import { useI18n } from 'vue-i18n';
 
 const CreditLimitEditPopover = defineAsyncComponent(() => import('./credit-limit-edit-popover.vue'));
+const InitialBalanceEditPopover = defineAsyncComponent(() => import('./initial-balance-edit-popover.vue'));
 const AccountCategoryEditPopover = defineAsyncComponent(() => import('./account-category-edit-popover.vue'));
 
 const { t } = useI18n();
@@ -31,6 +32,9 @@ const { isOwner } = useAccountAccess(toRef(() => props.account));
 // Loan and vehicle categories are locked to their dedicated flows on the backend.
 const isCategoryEditable = computed(
   () => isOwner.value && !isDedicatedFlowAccountCategory(props.account.accountCategory),
+);
+const isInitialBalanceEditable = computed(
+  () => isCategoryEditable.value && props.account.type === ACCOUNT_TYPES.system,
 );
 </script>
 
@@ -51,7 +55,13 @@ const isCategoryEditable = computed(
       <div class="flex items-center justify-between gap-2">
         <span>{{ t('pages.account.details.initialBalance') }}</span>
 
-        {{ toLocalCurrencyNumber(account.initialBalance, { currency: currencyCode }) }} {{ currencyCode }}
+        <div class="flex items-center gap-1.5">
+          <span
+            >{{ toLocalCurrencyNumber(account.initialBalance, { currency: currencyCode }) }} {{ currencyCode }}</span
+          >
+
+          <InitialBalanceEditPopover v-if="isInitialBalanceEditable" :account="account" :currency-code="currencyCode" />
+        </div>
       </div>
       <Separator />
       <div class="flex items-center justify-between gap-2">

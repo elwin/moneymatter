@@ -27,7 +27,9 @@ const getHoldingsImpl = async ({
   });
 
   // Get holdings with calculated market values
-  const holdingValues = await getHoldingValues({ portfolioId, date, userId });
+  const holdingValues = (await getHoldingValues({ portfolioId, date, userId })).map(
+    ({ baseRate: _baseRate, ...holding }) => holding,
+  );
 
   // Filter by securityId if provided
   if (securityId) {

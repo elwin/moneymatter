@@ -1171,18 +1171,89 @@ describe('GET /stats/net-worth-drivers', () => {
       await setPrice({ securityId: usdSecurity.id, date: '2025-12-31', price: '120' });
       await setPrice({ securityId: usdSecurity.id, date: JAN.end, price: '120' });
 
-      // Deliberately seed no exchange rate.
-      const { buckets, degraded } = await helpers.getNetWorthDrivers({
-        from: JAN.start,
-        to: JAN.end,
-        granularity: 'monthly',
+      // A rate stored after the window would be borrowed as the earliest known rate,
+      // so every USD->base rate is removed for the report call and put back after it.
+      const baseRatesWhere = { baseCode: API_LAYER_BASE_CURRENCY_CODE, quoteCode: global.BASE_CURRENCY_CODE };
+      const storedBaseRates = (await ExchangeRates.findAll({ where: baseRatesWhere, raw: true })).map(
+        ({ baseCode, quoteCode, date, rate, source }) => ({ baseCode, quoteCode, date, rate, source }),
+      );
+      await ExchangeRates.destroy({ where: baseRatesWhere });
+
+      try {
+        const { buckets, degraded } = await helpers.getNetWorthDrivers({
+          from: JAN.start,
+          to: JAN.end,
+          granularity: 'monthly',
+          raw: true,
+        });
+
+        // Priced, but valued at the 1:1 placeholder rather than a real cross-rate.
+        expect(buckets[0]!.composition.holdingsValue).toBe(1200);
+        expect(degraded).toBeDefined();
+        expect(degraded!.fxFallbackCurrencies).toContain('USD');
+      } finally {
+        await ExchangeRates.bulkCreate(storedBaseRates, { ignoreDuplicates: true });
+      }
+    });
+
+    it('values a boundary dated before the first stored rate at that rate and flags the currency', async () => {
+      const portfolio = await helpers.createPortfolio({ raw: true });
+      const usdSecurity = await Securities.create({
+        symbol: 'GOOGL',
+        providerSymbol: 'GOOGL',
+        currencyCode: 'USD',
+        providerName: SECURITY_PROVIDER.fmp,
+        assetClass: ASSET_CLASS.stocks,
+        name: 'Alphabet',
+      });
+      await seedHolding({ portfolioId: portfolio.id, securityId: usdSecurity.id });
+
+      await fundPortfolio({ portfolioId: portfolio.id, amount: '2000', date: '2025-12-15' });
+      await helpers.createInvestmentTransaction({
+        payload: {
+          portfolioId: portfolio.id,
+          securityId: usdSecurity.id,
+          category: INVESTMENT_TRANSACTION_CATEGORY.buy,
+          date: '2025-12-20',
+          quantity: '10',
+          price: '120',
+          fees: '0',
+        },
         raw: true,
       });
 
-      // Priced, but valued at the 1:1 placeholder rather than a real cross-rate.
-      expect(buckets[0]!.composition.holdingsValue).toBe(1200);
-      expect(degraded).toBeDefined();
-      expect(degraded!.fxFallbackCurrencies).toContain('USD');
+      await setPrice({ securityId: usdSecurity.id, date: '2025-12-31', price: '120' });
+      await setPrice({ securityId: usdSecurity.id, date: JAN.end, price: '120' });
+
+      // A USD->base rate dated on or before Dec 31 would give the opening boundary a
+      // real rate, so every USD->base rate is removed for the report call and put back after it.
+      const baseRatesWhere = { baseCode: API_LAYER_BASE_CURRENCY_CODE, quoteCode: global.BASE_CURRENCY_CODE };
+      const storedBaseRates = (await ExchangeRates.findAll({ where: baseRatesWhere, raw: true })).map(
+        ({ baseCode, quoteCode, date, rate, source }) => ({ baseCode, quoteCode, date, rate, source }),
+      );
+      await ExchangeRates.destroy({ where: baseRatesWhere });
+
+      try {
+        await ExchangeRates.create({ ...baseRatesWhere, rate: 4, date: new Date(`${JAN.end}T00:00:00.000Z`) });
+
+        const { buckets, degraded } = await helpers.getNetWorthDrivers({
+          from: JAN.start,
+          to: JAN.end,
+          granularity: 'monthly',
+          raw: true,
+        });
+
+        // 10 shares x $120 x 4 AED/USD at both boundaries. A 1:1 opening boundary
+        // would read 1,200 and report the 3,600 difference as growth.
+        expect(buckets[0]!.composition.holdingsValue).toBe(4800);
+        expect(buckets[0]!.investments.priceEffect).toBe(0);
+        expect(buckets[0]!.investments.growth).toBe(0);
+        expect(degraded).toBeDefined();
+        expect(degraded!.fxFallbackCurrencies).toContain('USD');
+      } finally {
+        await ExchangeRates.destroy({ where: baseRatesWhere });
+        await ExchangeRates.bulkCreate(storedBaseRates, { ignoreDuplicates: true });
+      }
     });
 
     it('compounds a price move with an FX move on a foreign holding', async () => {

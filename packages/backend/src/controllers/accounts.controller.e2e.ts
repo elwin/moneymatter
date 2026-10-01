@@ -1,10 +1,11 @@
 import type { RecordId } from '@bt/shared/types';
-import { ACCOUNT_CATEGORIES, ACCOUNT_TYPES, API_ERROR_CODES } from '@bt/shared/types';
+import { ACCOUNT_CATEGORIES, ACCOUNT_TYPES, API_ERROR_CODES, TRANSACTION_TYPES, VEHICLE_CLASS } from '@bt/shared/types';
 import { generateRandomRecordId } from '@common/lib/record-id-helpers';
 import { describe, expect, it } from '@jest/globals';
 import { ERROR_CODES } from '@js/errors';
 import * as helpers from '@tests/helpers';
-import { addDays } from 'date-fns';
+import { AED_PER_USD, EUR_PER_USD } from '@tests/mocks/exchange-rates/data';
+import { addDays, format, subDays } from 'date-fns';
 
 const DEFAULT_TX_AMOUNT = 1000;
 
@@ -40,6 +41,27 @@ async function createExpenseTransactions({ accountId, count }: { accountId: Reco
       },
     });
   }
+}
+
+const centsByDate = ({ rows }: { rows: { date: string | Date; amount: unknown }[] }) =>
+  new Map(rows.map((row) => [String(row.date).slice(0, 10), Math.round(Number(row.amount) * 100)]));
+
+const createBaseAccount = ({ initialBalance }: { initialBalance: number }) =>
+  helpers.createAccount({ payload: helpers.buildAccountPayload({ initialBalance }), raw: true });
+
+async function expectRejected({
+  id,
+  payload,
+}: {
+  id: string;
+  payload: { initialBalance: number; currentBalance?: number; accountCategory?: ACCOUNT_CATEGORIES };
+}) {
+  const before = await helpers.getAccount({ id, raw: true });
+  const historyBefore = await helpers.getBalanceHistory({ accountId: id, raw: true });
+  const res = await helpers.updateAccount<helpers.ErrorResponse>({ id, payload });
+  expect(res.statusCode).toBe(ERROR_CODES.ValidationError);
+  expect(await helpers.getAccount({ id, raw: true })).toStrictEqual(before);
+  expect(await helpers.getBalanceHistory({ accountId: id, raw: true })).toStrictEqual(historyBefore);
 }
 
 describe('Accounts controller', () => {
@@ -490,6 +512,164 @@ describe('Accounts controller', () => {
 
         const reloaded = await helpers.getAccount({ id: account.id, raw: true });
         expect(reloaded.accountCategory).toBe(ACCOUNT_CATEGORIES.saving);
+      });
+    });
+
+    describe('initialBalance', () => {
+      it('shifts initialBalance, currentBalance and the whole balance history by the same delta', async () => {
+        const account = await createBaseAccount({ initialBalance: 1000 });
+        await helpers.createTransaction({
+          payload: helpers.buildTransactionPayload({
+            accountId: account.id,
+            amount: 100,
+            time: subDays(new Date(), 10).toISOString(),
+          }),
+        });
+        await helpers.createTransaction({
+          payload: helpers.buildTransactionPayload({
+            accountId: account.id,
+            amount: 50,
+            transactionType: TRANSACTION_TYPES.income,
+            time: subDays(new Date(), 5).toISOString(),
+          }),
+        });
+        const historyBefore = centsByDate({
+          rows: await helpers.getBalanceHistory({ accountId: account.id, raw: true }),
+        });
+
+        const updated = await helpers.updateAccount({ id: account.id, payload: { initialBalance: 1500 }, raw: true });
+
+        expect(updated.initialBalance).toBe(1500);
+        expect(updated.refInitialBalance).toBe(1500);
+        expect(updated.currentBalance).toBe(1450);
+        expect(updated.refCurrentBalance).toBe(1450);
+
+        const historyRows = await helpers.getBalanceHistory({ accountId: account.id, raw: true });
+        const historyAfter = centsByDate({ rows: historyRows });
+        expect(historyAfter.size).toBe(historyBefore.size);
+        for (const [date, cents] of historyBefore) {
+          expect(historyAfter.get(date)).toBe(cents + 50000);
+        }
+        expect(helpers.balanceCentsOn({ rows: historyRows, date: new Date() })).toBe(145000);
+      });
+
+      it('moves both balances on an account without transactions', async () => {
+        const account = await createBaseAccount({ initialBalance: 100 });
+
+        const updated = await helpers.updateAccount({ id: account.id, payload: { initialBalance: -40 }, raw: true });
+
+        expect(updated.initialBalance).toBe(-40);
+        expect(updated.currentBalance).toBe(-40);
+        expect(updated.refCurrentBalance).toBe(-40);
+      });
+
+      it('changes nothing when the value is unchanged', async () => {
+        const account = await createBaseAccount({ initialBalance: 100 });
+        await createExpenseTransactions({ accountId: account.id, count: 1 });
+        const before = await helpers.getAccount({ id: account.id, raw: true });
+        const historyBefore = await helpers.getBalanceHistory({ accountId: account.id, raw: true });
+
+        const res = await helpers.updateAccount({ id: account.id, payload: { initialBalance: 100 } });
+
+        expect(res.statusCode).toBe(200);
+        expect(await helpers.getAccount({ id: account.id, raw: true })).toStrictEqual(before);
+        expect(await helpers.getBalanceHistory({ accountId: account.id, raw: true })).toStrictEqual(historyBefore);
+      });
+
+      it('keeps currentBalance = initialBalance + transactions for transactions created after the edit', async () => {
+        const account = await createBaseAccount({ initialBalance: 100 });
+        await helpers.updateAccount({ id: account.id, payload: { initialBalance: 250 }, raw: true });
+
+        await helpers.createTransaction({
+          payload: helpers.buildTransactionPayload({ accountId: account.id, amount: 30 }),
+        });
+
+        const reread = await helpers.getAccount({ id: account.id, raw: true });
+        expect(reread.initialBalance).toBe(250);
+        expect(reread.currentBalance).toBe(220);
+      });
+
+      it('re-measures ref balances at the spot rate for a foreign-currency account', async () => {
+        await helpers.addUserCurrencies({ currencyCodes: ['EUR'] });
+        const account = await helpers.createAccount({
+          payload: helpers.buildAccountPayload({ currencyCode: 'EUR', initialBalance: 200 }),
+          raw: true,
+        });
+
+        const updated = await helpers.updateAccount({ id: account.id, payload: { initialBalance: 500 }, raw: true });
+
+        const spotEurToAed = AED_PER_USD / EUR_PER_USD;
+        expect(updated.initialBalance).toBe(500);
+        expect(updated.currentBalance).toBe(500);
+        expect(Math.round(Number(updated.refInitialBalance) * 100)).toEqualRefValue(50000 * spotEurToAed);
+        expect(Math.round(Number(updated.refCurrentBalance) * 100)).toEqualRefValue(50000 * spotEurToAed);
+      });
+
+      it('rejects initialBalance on a bank-connected account', async () => {
+        const account = await helpers.createAccount({
+          payload: { ...helpers.buildAccountPayload(), type: ACCOUNT_TYPES.monobank },
+          raw: true,
+        });
+
+        await expectRejected({ id: account.id, payload: { initialBalance: 1000 } });
+      });
+
+      it('rejects initialBalance on a loan account', async () => {
+        const loan = await helpers.createLoan({
+          payload: helpers.buildCreateLoanPayload({ currencyCode: global.BASE_CURRENCY_CODE }),
+          raw: true,
+        });
+
+        await expectRejected({ id: loan.id, payload: { initialBalance: 1000 } });
+      });
+
+      it('rejects initialBalance on a vehicle account', async () => {
+        const vehicle = await helpers.createVehicle({
+          name: 'Car',
+          currencyCode: global.BASE_CURRENCY_CODE,
+          make: 'Toyota',
+          model: 'Camry',
+          year: 2020,
+          vehicleClass: VEHICLE_CLASS.sedan,
+          purchasePrice: 25000,
+          purchaseDate: format(subDays(new Date(), 365), 'yyyy-MM-dd'),
+          raw: true,
+        });
+
+        await expectRejected({ id: vehicle.accountId, payload: { initialBalance: 1000 } });
+      });
+
+      it('rejects initialBalance and currentBalance sent together', async () => {
+        const account = await createBaseAccount({ initialBalance: 100 });
+
+        await expectRejected({ id: account.id, payload: { initialBalance: 200, currentBalance: 300 } });
+      });
+
+      it('rolls back initialBalance when another field in the same request is rejected', async () => {
+        const account = await createBaseAccount({ initialBalance: 100 });
+        await createExpenseTransactions({ accountId: account.id, count: 1 });
+
+        await expectRejected({
+          id: account.id,
+          payload: { initialBalance: 500, accountCategory: ACCOUNT_CATEGORIES.loan },
+        });
+      });
+
+      it('persists initialBalance together with other fields', async () => {
+        const account = await createBaseAccount({ initialBalance: 100 });
+
+        const updated = await helpers.updateAccount({
+          id: account.id,
+          payload: { initialBalance: 300, name: 'Renamed' },
+          raw: true,
+        });
+
+        expect(updated.name).toBe('Renamed');
+        expect(updated.initialBalance).toBe(300);
+        expect(updated.currentBalance).toBe(300);
+        const reread = await helpers.getAccount({ id: account.id, raw: true });
+        expect(reread.name).toBe('Renamed');
+        expect(reread.initialBalance).toBe(300);
       });
     });
   });

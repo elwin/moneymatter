@@ -66,7 +66,8 @@ rate-data sidecar are reachable only from the `budget-tracker` network.
 5. [Backups](#5-backups)
 6. [Updating](#6-updating)
 
-Reference docs: [reverse proxies](reverse-proxies.md) ·
+Reference docs: [Portainer](portainer.md) ·
+[reverse proxies](reverse-proxies.md) ·
 [Traefik overlay](traefik-overlay.md) ·
 [environment variables](environment-reference.md) ·
 [troubleshooting](troubleshooting.md)

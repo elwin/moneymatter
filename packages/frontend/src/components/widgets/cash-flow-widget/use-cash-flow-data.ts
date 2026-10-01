@@ -135,8 +135,13 @@ export function useCashFlowData({
 
   const isFetching = computed(() => isUnionFetching.value || isCurrentFetching.value || isPrevFetching.value);
   const isInitialLoading = computed(() => isFetching.value && !hasCurrentData.value);
-  const isEmpty = computed(
+  const isCurrentEmpty = computed(
     () => hasCurrentData.value && currentTotals.value.income === 0 && currentTotals.value.expenses === 0,
+  );
+  // Empty only when the whole trend span has no activity: a current period
+  // without transactions still has past periods to chart.
+  const isEmpty = computed(
+    () => isCurrentEmpty.value && unionPeriods.value.every((p) => p.income === 0 && p.expenses === 0),
   );
 
   return {
@@ -148,6 +153,7 @@ export function useCashFlowData({
     hasPrevData,
     isFetching,
     isInitialLoading,
+    isCurrentEmpty,
     isEmpty,
   };
 }

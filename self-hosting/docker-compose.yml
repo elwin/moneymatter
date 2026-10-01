@@ -43,7 +43,11 @@ services:
       db: { condition: service_healthy }
       redis: { condition: service_healthy }
       currency-rates-api: { condition: service_healthy }
-    env_file: .env
+    # Portainer stores the stack's variables as stack.env instead of .env, so
+    # both are optional and whichever exists is loaded.
+    env_file:
+      - { path: .env, required: false }
+      - { path: stack.env, required: false }
     # Transaction attachments. Defaults to a Docker-managed volume; set
     # ATTACHMENTS_PATH in .env to a host directory (absolute, or starting with
     # ./) to keep them on a NAS/shared mount instead. The backend runs as user
@@ -137,7 +141,7 @@ services:
     # ports: ['127.0.0.1:${DB_HOST_PORT:-5432}:5432']
     environment:
       - POSTGRES_USER=${APPLICATION_DB_USERNAME}
-      - POSTGRES_PASSWORD=${APPLICATION_DB_PASSWORD}
+      - POSTGRES_PASSWORD=${APPLICATION_DB_PASSWORD:?not set - copy .env.example to .env and fill the REQUIRED section}
       - POSTGRES_DB=${APPLICATION_DB_DATABASE}
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB']

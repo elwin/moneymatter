@@ -1,5 +1,9 @@
-import type { RecordId } from '@bt/shared/types';
+import { ACCOUNT_STATUSES, API_ERROR_CODES, type RecordId } from '@bt/shared/types';
+import { findOrThrowNotFound } from '@common/utils/find-or-throw-not-found';
+import { t } from '@i18n/index';
 import { logger } from '@js/utils/logger';
+import Accounts from '@models/accounts.model';
+import BankDataProviderConnections from '@models/bank-data-provider-connections.model';
 import { isBaseCurrencyChangeLocked } from '@services/currencies/base-currency-lock';
 
 import { enqueueAccountSync } from './account-sync-queue';
@@ -66,6 +70,33 @@ export async function syncAllUserAccounts(userId: number): Promise<SyncResult> {
   if (firstError) throw firstError;
 
   return { totalAccounts: accounts.length, queuedAccounts };
+}
+
+export async function queueConnectionSync({
+  userId,
+  connectionId,
+}: {
+  userId: number;
+  connectionId: RecordId;
+}): Promise<SyncResult> {
+  const connection = await findOrThrowNotFound({
+    query: BankDataProviderConnections.findOne({ where: { id: connectionId, userId } }),
+    message: t({ key: 'errors.connectionNotFound' }),
+    code: API_ERROR_CODES.notFound,
+  });
+
+  // An inactive connection cannot reach its provider, so a queued job could only fail.
+  if (!connection.isActive) return { totalAccounts: 0, queuedAccounts: 0 };
+
+  const accounts = await Accounts.findAll({
+    where: { userId, bankDataProviderConnectionId: connectionId, status: ACCOUNT_STATUSES.active },
+    attributes: ['id'],
+  });
+  const accountIds = accounts.map((account) => account.id);
+
+  await enqueueAccountSync({ userId, connectionId, providerType: connection.providerType, accountIds });
+
+  return { totalAccounts: accountIds.length, queuedAccounts: accountIds.length };
 }
 
 /**

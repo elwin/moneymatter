@@ -1153,4 +1153,161 @@ describe('Update transaction controller', () => {
       expect(result.statusCode).toBe(ERROR_CODES.NotFoundError);
     });
   });
+
+  describe('editing a two-leg transfer keeps one expense and one income leg', () => {
+    const getLegs = async ({ expenseLegId, incomeLegId }: { expenseLegId: string; incomeLegId: string }) => {
+      const transactions = (await helpers.getTransactions({ raw: true }))!;
+      return {
+        expenseLeg: transactions.find((tx) => tx.id === expenseLegId)!,
+        incomeLeg: transactions.find((tx) => tx.id === incomeLegId)!,
+      };
+    };
+
+    const createManualCrossCurrencyTransfer = async () => {
+      const [{ account: cryptoProxy }, { account: monobankManual }] = await Promise.all([
+        helpers.createAccountWithNewCurrency({ currency: 'USD' }),
+        helpers.createAccountWithNewCurrency({ currency: 'UAH' }),
+      ]);
+
+      const [expenseLeg, incomeLeg] = await helpers.createTransaction({
+        payload: helpers.buildTransactionPayload({
+          accountId: cryptoProxy.id,
+          amount: 410,
+          transactionType: TRANSACTION_TYPES.expense,
+          transferNature: TRANSACTION_TRANSFER_NATURE.common_transfer,
+          destinationAccountId: monobankManual.id,
+          destinationAmount: 18400,
+        }),
+        raw: true,
+      });
+
+      expect(expenseLeg.transactionType).toBe(TRANSACTION_TYPES.expense);
+      expect(incomeLeg!.transactionType).toBe(TRANSACTION_TYPES.income);
+
+      return { cryptoProxy, monobankManual, expenseLeg, incomeLeg: incomeLeg! };
+    };
+
+    it('manual accounts: editing via the income leg does not flip the expense leg to income', async () => {
+      const { cryptoProxy, monobankManual, expenseLeg, incomeLeg } = await createManualCrossCurrencyTransfer();
+
+      const res = await helpers.updateTransaction({
+        id: incomeLeg.id,
+        payload: { note: 'edited from income leg' },
+        raw: false,
+      });
+      expect(res.statusCode).toEqual(200);
+
+      const legs = await getLegs({ expenseLegId: expenseLeg.id, incomeLegId: incomeLeg.id });
+
+      expect(legs.expenseLeg).toMatchObject({
+        transactionType: TRANSACTION_TYPES.expense,
+        accountId: cryptoProxy.id,
+        amount: 410,
+        refAmount: expenseLeg.refAmount,
+        transferId: expenseLeg.transferId,
+        transferNature: TRANSACTION_TRANSFER_NATURE.common_transfer,
+      });
+      expect(legs.incomeLeg).toMatchObject({
+        transactionType: TRANSACTION_TYPES.income,
+        accountId: monobankManual.id,
+        amount: 18400,
+        refAmount: incomeLeg.refAmount,
+        transferId: expenseLeg.transferId,
+        transferNature: TRANSACTION_TRANSFER_NATURE.common_transfer,
+      });
+    });
+
+    it('bank-connected income leg: a no-op save from the edit dialog does not flip the expense leg to income', async () => {
+      await helpers.monobank.pair();
+      const { account: monobankAccount, transactions } = await helpers.monobank.mockTransactions({
+        transactions: [{ amount: 1840000 }],
+      });
+      const externalIncome = transactions.find(
+        (tx) => tx.accountId === monobankAccount.id && tx.transactionType === TRANSACTION_TYPES.income,
+      )!;
+      expect(externalIncome).toBeDefined();
+
+      const { account: cryptoProxy } = await helpers.createAccountWithNewCurrency({ currency: 'USD' });
+
+      const [incomeLeg, expenseLeg] = await helpers.updateTransaction({
+        id: externalIncome.id,
+        payload: {
+          transferNature: TRANSACTION_TRANSFER_NATURE.common_transfer,
+          destinationAccountId: cryptoProxy.id,
+          destinationAmount: 410,
+        },
+        raw: true,
+      });
+      expect(incomeLeg.transactionType).toBe(TRANSACTION_TYPES.income);
+      expect(expenseLeg!.transactionType).toBe(TRANSACTION_TYPES.expense);
+
+      // What prepareTxUpdationParams sends for an untouched form opened on the external income leg:
+      // amount/time/type/accountId are omitted, and getDestinationAccount/Amount resolve to the source side.
+      const res = await helpers.updateTransaction({
+        id: incomeLeg.id,
+        payload: {
+          note: incomeLeg.note ?? undefined,
+          paymentType: incomeLeg.paymentType,
+          transferNature: TRANSACTION_TRANSFER_NATURE.common_transfer,
+          destinationAccountId: cryptoProxy.id,
+          destinationAmount: 410,
+        },
+        raw: false,
+      });
+      expect(res.statusCode).toEqual(200);
+
+      const legs = await getLegs({ expenseLegId: expenseLeg!.id, incomeLegId: incomeLeg.id });
+
+      expect(legs.expenseLeg).toMatchObject({
+        transactionType: TRANSACTION_TYPES.expense,
+        accountId: cryptoProxy.id,
+        amount: 410,
+        transferId: incomeLeg.transferId,
+        transferNature: TRANSACTION_TRANSFER_NATURE.common_transfer,
+      });
+      expect(legs.incomeLeg).toMatchObject({
+        transactionType: TRANSACTION_TYPES.income,
+        accountId: monobankAccount.id,
+        amount: 18400,
+        transferId: incomeLeg.transferId,
+        transferNature: TRANSACTION_TRANSFER_NATURE.common_transfer,
+      });
+    }, 30000);
+
+    it('manual accounts: editing via the expense leg keeps both leg types (control)', async () => {
+      const { cryptoProxy, monobankManual, expenseLeg, incomeLeg } = await createManualCrossCurrencyTransfer();
+
+      const res = await helpers.updateTransaction({
+        id: expenseLeg.id,
+        payload: {
+          amount: 410,
+          note: 'edited from expense leg',
+          time: new Date(expenseLeg.time).toISOString(),
+          transactionType: TRANSACTION_TYPES.expense,
+          paymentType: expenseLeg.paymentType,
+          accountId: cryptoProxy.id,
+          transferNature: TRANSACTION_TRANSFER_NATURE.common_transfer,
+          destinationAccountId: monobankManual.id,
+          destinationAmount: 18400,
+        },
+        raw: false,
+      });
+      expect(res.statusCode).toEqual(200);
+
+      const legs = await getLegs({ expenseLegId: expenseLeg.id, incomeLegId: incomeLeg.id });
+
+      expect(legs.expenseLeg).toMatchObject({
+        transactionType: TRANSACTION_TYPES.expense,
+        accountId: cryptoProxy.id,
+        amount: 410,
+        transferId: expenseLeg.transferId,
+      });
+      expect(legs.incomeLeg).toMatchObject({
+        transactionType: TRANSACTION_TYPES.income,
+        accountId: monobankManual.id,
+        amount: 18400,
+        transferId: expenseLeg.transferId,
+      });
+    });
+  });
 });

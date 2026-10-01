@@ -82,8 +82,8 @@ interface InvestmentSlice {
    */
   unpricedSecurities: endpointsTypes.NetWorthDriversUnpricedSecurity[];
   /**
-   * Currencies that resolved at a 1:1 placeholder because no rate was known, so
-   * every amount touching them is off by the true rate. Empty when all resolved.
+   * Currencies converted without a real rate for the day: at the currency's earliest
+   * stored rate for earlier dates, or 1:1 when none is stored. Empty when all resolved.
    */
   fxFallbackCurrencies: string[];
 }
@@ -351,7 +351,7 @@ const calculateInvestmentSlice = async ({
     userBaseCurrencyCode: userBaseCurrency.currencyCode,
     userRatesMap,
     findLatestUsdRate: createFindLatestUsdRate({ usdRatesMap, usdRateDatesByQuote }),
-    onMissingRate: (code) => missingRateCurrencies.add(code),
+    onMissingRate: ({ currencyCode }) => missingRateCurrencies.add(currencyCode),
   });
 
   // A holding with no price on a snapshot day is carried at cost basis by the

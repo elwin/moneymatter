@@ -25,8 +25,11 @@ interface UsdRateLookup {
  * caller silently collapses that currency's value to a wrong 1:1 — e.g. a USD asset on
  * a base whose rate stopped updating reads ~40x off. Querying the single latest rate
  * before `windowStart` per currency gives the walk a valid prior rate to carry forward.
- * (A currency with no stored rate anywhere is still absent here — that is a
- * rate-coverage gap upstream, not a read-path bug.)
+ * A currency whose first stored rate falls inside the window has no anchor;
+ * `findLatestUsdRate` resolves the days before it at that first rate. A currency
+ * with no stored rate up to the window end gets its earliest stored rate, dated
+ * after the window, and resolves every day at it the same way. Only a currency
+ * with no stored rate anywhere is absent here and converts 1:1.
  *
  * `systemRates` MUST already be sorted ascending by date within each quoteCode (the
  * callers order their query by quoteCode, date ASC). Pre-window anchors are inserted
@@ -74,12 +77,33 @@ export const buildUsdRateLookup = async ({
       )) as UsdRateRow[])
     : [];
 
+  // A currency with no anchor and no in-window row has no rate up to the window
+  // end, so its earliest stored rate overall is the first one after the window.
+  const coveredCodes = new Set([...preWindowAnchors, ...systemRates].map((row) => row.quoteCode));
+  const uncoveredCodes = anchorCodes.filter((code) => !coveredCodes.has(code));
+  const earliestRatesAfterWindow = uncoveredCodes.length
+    ? ((await connection.sequelize.query(
+        `
+        SELECT DISTINCT ON ("quoteCode") "quoteCode", "date", "rate"
+          FROM "ExchangeRates"
+         WHERE "baseCode" = :baseCode
+           AND "quoteCode" IN (:uncoveredCodes)
+         ORDER BY "quoteCode", "date" ASC
+        `,
+        {
+          type: QueryTypes.SELECT,
+          replacements: { baseCode: API_LAYER_BASE_CURRENCY_CODE, uncoveredCodes },
+        },
+      )) as UsdRateRow[])
+    : [];
+
   const usdRatesMap = new Map<string, number>();
   const usdRateDatesByQuote = new Map<string, string[]>();
 
   // Anchors first (each strictly older than every in-window date), then the in-window
-  // rows in ascending date order — keeps each quote's date list ascending.
-  for (const row of [...preWindowAnchors, ...systemRates]) {
+  // rows in ascending date order — keeps each quote's date list ascending. An
+  // after-window rate is the only row of its quote.
+  for (const row of [...preWindowAnchors, ...systemRates, ...earliestRatesAfterWindow]) {
     const dateStr = formatDate(row.date);
     usdRatesMap.set(`${row.quoteCode}_${dateStr}`, row.rate);
 

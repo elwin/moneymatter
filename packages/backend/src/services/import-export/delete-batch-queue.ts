@@ -41,6 +41,7 @@ const {
   baseName: 'import-batch-delete',
   sseEventType: SSE_EVENT_TYPES.IMPORT_BATCH_DELETE_PROGRESS,
   logLabel: 'Import Batch Delete',
+  interruptedMessageKey: 'common.jobInterruptedByServerUpdate',
   processJob: async ({ job }) => {
     const { userId, batchId, deleteLinkedTransfers } = job.data;
     const jobId = job.id!;

@@ -22,6 +22,8 @@ Open `http://<host>:8080`. Full walkthrough:
 
 - [Setup guide](docs/setup-guide.md) – prerequisites, quickstart, exposing
   the app publicly, building from source, backups.
+- [Portainer](docs/portainer.md) – deploy the same stack from the Portainer
+  UI instead of the CLI.
 - [Reverse proxies](docs/reverse-proxies.md) – requirements any proxy must
   meet + recipes per proxy (Nginx Proxy Manager, Caddy).
 - [Traefik overlay](docs/traefik-overlay.md) – bundled TLS termination with

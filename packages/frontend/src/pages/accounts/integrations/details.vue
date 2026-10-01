@@ -238,8 +238,14 @@
             </span>
           </div>
 
-          <UiButton v-if="canSyncNow" variant="ghost-primary" size="sm" :disabled="isSyncingNow" @click="handleSyncNow">
-            <RefreshCwIcon :class="cn('size-4', isSyncingNow && 'animate-spin')" />
+          <UiButton
+            v-if="canSyncNow"
+            variant="ghost-primary"
+            size="sm"
+            :disabled="isSyncNowBusy"
+            @click="handleSyncNow"
+          >
+            <RefreshCwIcon :class="cn('size-4', isSyncNowBusy && 'animate-spin')" />
             {{ $t('pages.integrations.details.connectedAccounts.syncNow') }}
           </UiButton>
         </div>
@@ -333,8 +339,8 @@ import {
   disconnectProvider,
   getAvailableAccounts,
   reauthorizeConnection,
+  syncConnection,
   syncSelectedAccounts,
-  syncTransactions,
   updateConnectionDetails,
 } from '@/api/bank-data-providers';
 import { VUE_QUERY_CACHE_KEYS, VUE_QUERY_GLOBAL_PREFIXES } from '@/common/const';
@@ -382,7 +388,7 @@ import {
   UnlinkIcon,
 } from '@lucide/vue';
 import { storeToRefs } from 'pinia';
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRoute, useRouter } from 'vue-router';
 
@@ -581,7 +587,7 @@ const accountsStatValue = computed(() => {
   });
 });
 
-const { accountStatuses, watchSync } = useSyncStatus();
+const { accountStatuses, syncStuck, watchSync, fetchStatus } = useSyncStatus();
 
 const connectionAccountIds = computed(() => new Set((connectionDetails.value?.accounts ?? []).map((a) => a.id)));
 
@@ -599,25 +605,45 @@ const canSyncNow = computed(
     connectionDetails.value.accounts.length > 0,
 );
 
+const isConnectionSyncing = computed(() =>
+  accountStatuses.value.some(
+    (status) =>
+      connectionAccountIds.value.has(status.accountId) &&
+      (status.status === SyncStatus.QUEUED || status.status === SyncStatus.SYNCING),
+  ),
+);
+
+// The sync runs in the background, so its failure is only visible in the statuses.
+watch(isConnectionSyncing, (syncing, wasSyncing) => {
+  if (wasSyncing && !syncing && failedSyncCount.value > 0) {
+    addErrorNotification(t('pages.integrations.details.connectedAccounts.syncFailed'));
+  }
+});
+
 const { mutate: syncNowMutation, isPending: isSyncingNow } = useMutation({
-  mutationFn: () =>
-    Promise.all(connectionDetails.value!.accounts.map((account) => syncTransactions(connectionId.value, account.id))),
-  onSuccess: () => {
+  mutationFn: async () => {
+    // Subscribe first: a sync that finishes before the SSE connects is never reported.
+    await watchSync();
+    const result = await syncConnection({ connectionId: connectionId.value });
+    // Without this the queued state is only seen if the SSE connection is up.
+    await fetchStatus();
+    return result;
+  },
+  onSuccess: ({ queuedAccounts }) => {
+    // Nothing queued means the cached connection is stale (deactivated or emptied since load).
+    if (queuedAccounts === 0) {
+      queryClient.invalidateQueries({ queryKey: [VUE_QUERY_GLOBAL_PREFIXES.bankConnectionChange] });
+      return;
+    }
     addSuccessNotification(t('pages.integrations.details.connectedAccounts.syncStarted'));
-    queryClient.invalidateQueries({
-      predicate: (query) => {
-        const queryKey = query.queryKey as string[];
-        return (
-          queryKey.includes(VUE_QUERY_GLOBAL_PREFIXES.transactionChange) ||
-          queryKey.includes(VUE_QUERY_GLOBAL_PREFIXES.bankConnectionChange)
-        );
-      },
-    });
   },
   onError: () => {
     addErrorNotification(t('pages.integrations.details.connectedAccounts.syncFailed'));
   },
 });
+
+// `syncStuck` frees the button when a finished sync's last status update never arrived.
+const isSyncNowBusy = computed(() => isSyncingNow.value || (isConnectionSyncing.value && !syncStuck.value));
 
 const handleSyncNow = () => syncNowMutation();
 

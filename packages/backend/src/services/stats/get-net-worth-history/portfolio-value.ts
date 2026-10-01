@@ -53,7 +53,10 @@ interface PortfolioValuation {
   valuesByDate: Map<string, Cents> | null;
   /** Holdings carried at cost basis for lack of a price; empty when every holding priced. */
   unpricedSecurities: endpointsTypes.NetWorthHistoryUnpricedSecurity[];
-  /** ISO codes that converted at a 1:1 placeholder; empty when every currency resolved. */
+  /**
+   * ISO codes converted without a real rate for the day: at the currency's earliest
+   * stored rate for earlier dates, or 1:1 when none is stored. Empty when all resolved.
+   */
   fxFallbackCurrencies: string[];
 }
 
@@ -258,11 +261,13 @@ export const calculatePortfolioValueByDate = async ({
   });
 
   const missingRateCurrencies = new Set<string>();
+  const approximatedRateCurrencies = new Set<string>();
   const getExchangeRate = createGetExchangeRate({
     userBaseCurrencyCode: userBaseCurrency.currencyCode,
     userRatesMap,
     findLatestUsdRate: createFindLatestUsdRate({ usdRatesMap, usdRateDatesByQuote }),
-    onMissingRate: (code) => missingRateCurrencies.add(code),
+    onMissingRate: ({ currencyCode, approximated }) =>
+      (approximated ? approximatedRateCurrencies : missingRateCurrencies).add(currencyCode),
   });
 
   // A holding with no price on a snapshot day is carried at cost basis by the
@@ -309,6 +314,18 @@ export const calculatePortfolioValueByDate = async ({
     });
   }
 
+  // Info-only: the degradation is already surfaced via `fxFallbackCurrencies` in
+  // the response, and a range reaching back past a currency's first stored rate
+  // is approximated on every request.
+  if (approximatedRateCurrencies.size > 0) {
+    logger.info('Net-worth history converted days before the first stored exchange rate at that rate', {
+      userId,
+      baseCurrency: userBaseCurrency.currencyCode,
+      currencies: Array.from(approximatedRateCurrencies),
+      dateRange: { from: minDate, to: maxDate },
+    });
+  }
+
   // Info-only: the degradation is already surfaced via `unpricedSecurities` in
   // the response, and permanent price gaps would page Sentry on every request.
   if (unpricedSecurityIds.size > 0) {
@@ -340,6 +357,6 @@ export const calculatePortfolioValueByDate = async ({
   return {
     valuesByDate: portfolioValueByDate,
     unpricedSecurities,
-    fxFallbackCurrencies: Array.from(missingRateCurrencies),
+    fxFallbackCurrencies: [...new Set([...missingRateCurrencies, ...approximatedRateCurrencies])],
   };
 };

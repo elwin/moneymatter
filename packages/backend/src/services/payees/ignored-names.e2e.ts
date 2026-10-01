@@ -29,6 +29,19 @@ describe('Payee Ignored Names', () => {
       expect(final.some((r) => r.id === added.id)).toBe(false);
     });
 
+    it('adopts the existing row when the same name is added concurrently', async () => {
+      const [first, second] = await Promise.all([
+        helpers.addIgnoredName({ rawName: 'Same Name', raw: false }),
+        helpers.addIgnoredName({ rawName: 'Same Name', raw: false }),
+      ]);
+      expect(first.statusCode).toBe(200);
+      expect(second.statusCode).toBe(200);
+      expect(helpers.extractResponse(first).id).toBe(helpers.extractResponse(second).id);
+
+      const rows = await helpers.listIgnoredNames({ raw: true });
+      expect(rows.filter((r) => r.normalizedName === 'same name')).toHaveLength(1);
+    });
+
     it('returns 409 when an existing Payee matches the normalized name, and force=true deletes it', async () => {
       const payee = await helpers.createPayee({
         payload: helpers.buildPayeePayload({ name: 'Glovo' }),

@@ -65,7 +65,7 @@ Pick the currency carefully. Once the account is created, its currency is fixed.
 
 ### Initial balance
 
-How much money was in the account before the first transaction you record in MoneyMatter. It can be negative, for example −300 for a card you already owe 300 on.
+How much money was in the account before the first transaction you record in MoneyMatter. It can be negative, for example −300 for a card you already owe 300 on. You can [change it later](/accounts/manage-accounts/#change-the-initial-balance) if you get it wrong.
 
 From then on, MoneyMatter works out the balance for you:
 
@@ -73,7 +73,7 @@ From then on, MoneyMatter works out the balance for you:
 
 Money in and out includes everything recorded on the account: income, expenses, transfers and balance adjustments. Every time you add, edit or delete a transaction on the account, the balance updates.
 
-You can see the initial balance later on the account's **Details** tab, but you can't edit it yourself. An import may adjust it for you (see [below](#choose-the-right-initial-balance)). To correct a balance after the account exists, use [Adjust balance](/accounts/manage-accounts/#adjust-a-balance).
+You can see and [change the initial balance](/accounts/manage-accounts/#change-the-initial-balance) later on the account's **Details** tab. An import may also adjust it for you (see [below](#choose-the-right-initial-balance)). If the balance drifted from a specific date, use [Adjust balance](/accounts/manage-accounts/#adjust-a-balance) instead.
 
 ### Account Category
 
@@ -123,14 +123,14 @@ Say your bank shows 1,200 EUR today, and you're about to add last month's transa
 See [how an import affects balances](/import/import-from-csv/#how-an-import-affects-balances). **Import from any Text Source** has no such checkbox and always moves the balance, so treat it like adding transactions by hand. See [other import sources](/import/other-import-sources/#import-from-any-text-source).
 
 <Aside type="tip" title="Not sure of the starting number?">
-Leave the initial balance at 0 and add your transactions by hand. Then use [Adjust balance](/accounts/manage-accounts/#adjust-a-balance) to set the balance to what your bank shows today, and [set its **Effective date**](/accounts/manage-accounts/#backdate-an-adjustment) to the day before your first transaction. That way the correction covers your whole history. If you keep today's date, earlier days stay off by the difference and your balance history jumps on the day of the adjustment.
+Leave the initial balance at 0 and add your transactions by hand. Then [change the initial balance](/accounts/manage-accounts/#change-the-initial-balance) to your bank's balance today minus the balance MoneyMatter shows. For example, if your bank shows 1,200 EUR and MoneyMatter shows −300 EUR, set the initial balance to 1,500. The whole history moves with it, so there's no jump in your balance history.
 
 If you're importing, enter today's balance and leave the import checkbox off, as described above.
 </Aside>
 
 ## Good to know
 
-- **You can't edit the currency or initial balance yourself.** Everything else can be changed: the name, logo, category and credit limit. An import may adjust the initial balance for you so your current balance stays the same. See [how an import affects balances](/import/import-from-csv/#how-an-import-affects-balances).
+- **You can't edit the currency.** Everything else can be changed: the name, logo, category, credit limit and, on manual accounts, the [initial balance](/accounts/manage-accounts/#change-the-initial-balance). An import may also adjust the initial balance for you so your current balance stays the same. See [how an import affects balances](/import/import-from-csv/#how-an-import-affects-balances).
 - **Creating an account ticks off a task in the Quick Start checklist.** See [the Quick Start checklist](/getting-started/quick-start/#the-quick-start-checklist).
 - **Keep accounts tidy with groups.** You can put related accounts into [account groups](/accounts/account-groups/).
 

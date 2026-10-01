@@ -161,6 +161,7 @@ const getPortfolioSummaryImpl = async ({
   // One rate lookup per distinct holding currency: every lookup queries the user's
   // currency connection before any cache, so a per-holding call is an N+1.
   const baseRates = new Map<string, number>();
+  for (const h of holdings) if (h.baseRate !== undefined) baseRates.set(h.currencyCode, h.baseRate);
   const toBase = async ({ amount, currencyCode }: { amount: Money; currencyCode: string }): Promise<Money> => {
     let rate = baseRates.get(currencyCode);
     if (rate === undefined) {

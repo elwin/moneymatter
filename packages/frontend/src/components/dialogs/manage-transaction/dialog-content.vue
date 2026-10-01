@@ -1390,9 +1390,10 @@ onUnmounted(() => {
       />
     </FormRow>
     <AttachmentsSection
-      v-if="transaction?.id || !isTransferTx"
+      v-if="transaction?.id || !form.toPortfolio"
       v-model:pending="pendingAttachments"
       :transaction-id="transaction?.id"
+      :mirror-transaction-id="isTransferTx ? oppositeTransaction?.id : undefined"
       :disabled="isFormFieldsDisabled"
     />
     <FormRow v-if="!isTransferTx && showOriginalAmount">

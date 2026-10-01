@@ -634,6 +634,42 @@ describe('Subscriptions', () => {
         expect(err.details).toEqual({ currencyCodes: ['UAH'] });
       });
 
+      it('converts every subscription in a manual-rate currency at the custom rate', async () => {
+        await helpers.createSubscription({
+          name: 'EUR Sub A',
+          expectedAmount: 10,
+          expectedCurrencyCode: 'EUR',
+          frequency: SUBSCRIPTION_FREQUENCIES.monthly,
+          startDate: '2025-01-01',
+          raw: true,
+        });
+        await helpers.createSubscription({
+          name: 'EUR Sub B',
+          expectedAmount: 20,
+          expectedCurrencyCode: 'EUR',
+          frequency: SUBSCRIPTION_FREQUENCIES.monthly,
+          startDate: '2025-01-01',
+          raw: true,
+        });
+
+        await helpers.updateUserCurrency({
+          currency: { currencyCode: 'EUR', liveRateUpdate: false },
+          raw: true,
+        });
+        const rateRes = await helpers.editCurrencyExchangeRate({
+          pairs: [
+            { baseCode: 'EUR', quoteCode: global.BASE_CURRENCY_CODE, rate: 5 },
+            { baseCode: global.BASE_CURRENCY_CODE, quoteCode: 'EUR', rate: 0.2 },
+          ],
+        });
+        expect(rateRes.statusCode).toBe(200);
+
+        const summary = await helpers.getSubscriptionsSummary({ raw: true });
+        expect(summary.activeCount).toEqual({ expense: 2, income: 0 });
+        expect(summary.estimatedMonthlyCost).toBe(150);
+        expect(summary.projectedYearlyCost).toBe(1800);
+      });
+
       it('self-heals the base currency from a subscription currency and returns a summary', async () => {
         // A freshly signed-up user has no base currency row. Creating a
         // subscription connects its currency as a NON-default row, reproducing

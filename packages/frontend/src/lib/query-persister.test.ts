@@ -4,20 +4,30 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 // idb-keyval backed by an in-memory Map so the persister's reads/writes are
 // observable without a real IndexedDB. `vi.hoisted` makes the Map reachable from
 // the hoisted mock factory.
-const { memory } = vi.hoisted(() => ({ memory: new Map<string, string>() }));
+const { memory, idbState, idbCall } = vi.hoisted(() => {
+  const state = { failing: false, failingClear: false };
+  return {
+    memory: new Map<string, string>(),
+    idbState: state,
+    // Mirrors the error Chrome throws from every call when its IndexedDB backing store is corrupt.
+    idbCall: async <T>(run: () => T): Promise<T> => {
+      if (state.failing) throw new DOMException('Internal error.', 'UnknownError');
+      return run();
+    },
+  };
+});
 
 vi.mock('idb-keyval', () => ({
   createStore: () => ({}),
-  get: async (key: string) => memory.get(key),
-  set: async (key: string, value: string) => {
-    memory.set(key, value);
-  },
-  del: async (key: string) => {
-    memory.delete(key);
-  },
-  clear: async () => {
-    memory.clear();
-  },
+  get: (key: string) => idbCall(() => memory.get(key)),
+  set: (key: string, value: string) => idbCall(() => void memory.set(key, value)),
+  del: (key: string) => idbCall(() => void memory.delete(key)),
+  clear: () =>
+    idbCall(() => {
+      if (idbState.failingClear) throw new DOMException('Transaction aborted.', 'AbortError');
+      memory.clear();
+    }),
+  entries: () => idbCall(() => [...memory.entries()]),
 }));
 
 // The persister persists on a scheduled macrotask, so let the queue drain before
@@ -31,6 +41,7 @@ const flushIdle = async () => {
   await flushScheduler();
 };
 
+let persisterModule: Awaited<ReturnType<typeof loadModule>>;
 let persistedQueryFn: NonNullable<Awaited<ReturnType<typeof loadModule>>['persistedQueryFn']>;
 let persistedImmutableQueryFn: NonNullable<Awaited<ReturnType<typeof loadModule>>['persistedImmutableQueryFn']>;
 
@@ -61,14 +72,18 @@ beforeAll(async () => {
     throw new Error('immutable persister should be enabled when indexedDB is present');
   persistedQueryFn = mod.persistedQueryFn;
   persistedImmutableQueryFn = mod.persistedImmutableQueryFn;
+  persisterModule = mod;
 });
 
 afterAll(() => {
   vi.unstubAllGlobals();
 });
 
-beforeEach(() => {
-  memory.clear();
+beforeEach(async () => {
+  idbState.failing = false;
+  idbState.failingClear = false;
+  // A successful wipe also lifts the module's unreadable-store flag left by a failed one.
+  await persisterModule.clearPersistedQueries();
 });
 
 describe('query persister – empty snapshots are not persisted', () => {
@@ -222,5 +237,42 @@ describe('query persister – immutable reference data', () => {
     // Only key that's genuinely zero-request – see `persistedImmutableQueryFn`.
     expect(data).toEqual([{ code: 'USD' }]);
     expect(calls).toBe(0);
+  });
+});
+
+describe('query persister – broken IndexedDB degrades to unpersisted', () => {
+  beforeEach(() => {
+    idbState.failing = true;
+  });
+
+  it('resolves a persisted fetch with the queryFn result', async () => {
+    const data = await fetchThrough(freshClient(), ['base-currency'], async () => ({ code: 'USD' }));
+    await flushScheduler();
+
+    expect(data).toEqual({ code: 'USD' });
+  });
+
+  it('resolves garbage collection', async () => {
+    await expect(persisterModule.collectPersistedQueryGarbage()).resolves.toBeUndefined();
+  });
+
+  it('resolves persisted-store removal and teardown', async () => {
+    await expect(persisterModule.removePersistedQuery({ queryKey: ['base-currency'] })).resolves.toBeUndefined();
+    await expect(persisterModule.clearPersistedQueries()).resolves.toBe(false);
+    await expect(persisterModule.resetQueryCaches(freshClient())).resolves.toBe(false);
+  });
+});
+
+describe('query persister – failed wipe with readable IndexedDB', () => {
+  it('reports the failure and stops restoring the unwiped store', async () => {
+    await fetchThrough(freshClient(), ['portfolios'], async () => [{ id: 'previous-user' }]);
+    await flushScheduler();
+
+    idbState.failingClear = true;
+    await expect(persisterModule.clearPersistedQueries()).resolves.toBe(false);
+
+    const data = await fetchThrough(freshClient(), ['portfolios'], async () => [{ id: 'current-user' }]);
+
+    expect(data).toEqual([{ id: 'current-user' }]);
   });
 });

@@ -176,7 +176,7 @@ import { EyeOffIcon } from '@lucide/vue';
 import { useQuery } from '@tanstack/vue-query';
 import { useResizeObserver } from '@vueuse/core';
 import * as d3 from 'd3';
-import { endOfMonth, startOfMonth } from 'date-fns';
+import { endOfMonth, parseISO, startOfMonth } from 'date-fns';
 import { storeToRefs } from 'pinia';
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
@@ -466,7 +466,7 @@ const getMargins = ({ width, shouldRotate }: { width: number; shouldRotate: bool
 };
 
 const formatPeriodLabel = (periodStart: string): string => {
-  const date = new Date(periodStart);
+  const date = parseISO(periodStart);
   return format(date, 'MMM yy');
 };
 
@@ -895,7 +895,7 @@ function handleMouseEnter(event: MouseEvent, d: PeriodWithChange) {
   // Skip if user is interacting with tooltip
   if (isTooltipInteracting.value) return;
 
-  const startDate = new Date(d.periodStart);
+  const startDate = parseISO(d.periodStart);
   tooltip.period = format(startDate, 'MMMM yyyy');
   tooltip.value = d.value;
   tooltip.totalValue = undefined; // No total needed for non-stacked bars
@@ -919,7 +919,7 @@ function handleStackedMouseEnter(
   // Skip if user is interacting with tooltip
   if (isTooltipInteracting.value) return;
 
-  const startDate = new Date(period.periodStart);
+  const startDate = parseISO(period.periodStart);
   tooltip.period = format(startDate, 'MMMM yyyy');
   tooltip.value = getCategoryAmount(cat);
 

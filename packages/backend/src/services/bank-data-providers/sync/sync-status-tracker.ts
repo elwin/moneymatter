@@ -88,8 +88,60 @@ export async function setAccountSyncStatus({
   error?: string | null;
   userId: number;
 }): Promise<void> {
-  if (!isRedisReady()) return;
+  await setAccountsSyncStatus({ accountIds: [accountId], status, error, userId });
+}
 
+/**
+ * Set the same sync status for several accounts, then emit a single SSE event
+ */
+export async function setAccountsSyncStatus({
+  accountIds,
+  status,
+  error = null,
+  userId,
+}: {
+  accountIds: RecordId[];
+  status: SyncStatus;
+  error?: string | null;
+  userId: number;
+}): Promise<void> {
+  if (!isRedisReady() || accountIds.length === 0) return;
+
+  await Promise.all(accountIds.map((accountId) => writeAccountSyncStatus({ accountId, status, error })));
+
+  if (status !== SyncStatus.IDLE && isRedisReady()) {
+    await emitSyncStatus({ userId });
+  }
+}
+
+async function emitSyncStatus({ userId }: { userId: number }): Promise<void> {
+  // The full-status re-query costs several DB queries; skip it when nobody is listening.
+  if (!sseManager.hasConnections(userId)) return;
+
+  try {
+    // Import dynamically to avoid circular dependency
+    const { getUserAccountsSyncStatus } = await import('./get-user-sync-status');
+    const fullStatus = await getUserAccountsSyncStatus(userId);
+    sseManager.sendToUser({
+      userId,
+      event: SSE_EVENT_TYPES.SYNC_STATUS_CHANGED,
+      data: fullStatus,
+    });
+  } catch (err) {
+    // Log but don't throw - Redis state is already updated, SSE is best-effort
+    logger.error({ message: '[SSE] Failed to emit sync status event', error: err as Error });
+  }
+}
+
+async function writeAccountSyncStatus({
+  accountId,
+  status,
+  error,
+}: {
+  accountId: RecordId;
+  status: SyncStatus;
+  error: string | null;
+}): Promise<void> {
   // startedAt is required to detect stale active syncs (isStaleStatus uses it).
   // Stamp it for QUEUED too — otherwise an account that never transitions out
   // of QUEUED never gets cleaned up by the staleness check and the UI keeps
@@ -113,23 +165,6 @@ export async function setAccountSyncStatus({
   if (!isRedisReady()) return;
 
   await redisClient.setex(REDIS_KEYS.accountSyncStatus(accountId), STATUS_TTL, JSON.stringify(statusData));
-
-  // Emit SSE event for interesting status changes (not IDLE)
-  if (status !== SyncStatus.IDLE) {
-    try {
-      // Import dynamically to avoid circular dependency
-      const { getUserAccountsSyncStatus } = await import('./get-user-sync-status');
-      const fullStatus = await getUserAccountsSyncStatus(userId);
-      sseManager.sendToUser({
-        userId,
-        event: SSE_EVENT_TYPES.SYNC_STATUS_CHANGED,
-        data: fullStatus,
-      });
-    } catch (err) {
-      // Log but don't throw - Redis state is already updated, SSE is best-effort
-      logger.error({ message: '[SSE] Failed to emit sync status event', error: err as Error });
-    }
-  }
 }
 
 /**

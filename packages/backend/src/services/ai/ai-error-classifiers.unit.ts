@@ -313,6 +313,31 @@ describe('classifyAiCallFailure', () => {
     expect(classifyAiCallFailure({ error })).toMatchObject({ kind: 'auth', httpStatus: 401 });
   });
 
+  it('reads a 402 Payment Required as auth', () => {
+    const error = buildApiCallError({ statusCode: 402, responseBody: JSON.stringify({ error: 'payment required' }) });
+
+    expect(classifyAiCallFailure({ error })).toMatchObject({ kind: 'auth', httpStatus: 402 });
+  });
+
+  it('reads a billing refusal as auth on a non-429 status', () => {
+    const error = buildApiCallError({
+      statusCode: 400,
+      message: 'inference prohibited, please enter a payment method in https://deepinfra.com/dash/billing',
+      responseBody: JSON.stringify({ detail: { error: 'inference prohibited' } }),
+    });
+
+    expect(classifyAiCallFailure({ error })).toMatchObject({ kind: 'auth', httpStatus: 400 });
+  });
+
+  it('reads a 429 that mentions a payment method as rate-limited', () => {
+    const error = buildApiCallError({
+      statusCode: 429,
+      message: 'Rate limit reached. Add a payment method to increase your rate limit.',
+    });
+
+    expect(classifyAiCallFailure({ error })).toMatchObject({ kind: 'rate-limited', httpStatus: 429 });
+  });
+
   // isTemporaryError accepts a 429 too, so rate-limited has to win for callers to back off.
   it('reads a JSON 429 as rate-limited, not temporary', () => {
     const error = buildApiCallError({ statusCode: 429, responseBody: JSON.stringify({ error: 'slow down' }) });

@@ -4,7 +4,7 @@ import LogoSearch from '@/components/common/logo-search.vue';
 import ResponsiveDialog from '@/components/common/responsive-dialog.vue';
 import { Button } from '@/components/lib/ui/button';
 import { useNotificationCenter } from '@/components/notification-center';
-import { extractApiErrorMessage, isApiErrorWithCode } from '@/js/errors';
+import { extractApiErrorMessage, isApiErrorWithCode, isNotFoundError } from '@/js/errors';
 import { captureException } from '@/lib/sentry';
 import { API_ERROR_CODES, type EntityLogoPayload } from '@bt/shared/types';
 import { RotateCcwIcon } from '@lucide/vue';
@@ -57,6 +57,11 @@ function handleMutationError({ error, operation }: { error: unknown; operation: 
   // A rejected logo payload names the rule that was broken (mutual exclusion,
   // initials length, color format), so the server message is the advice to show.
   if (isApiErrorWithCode(error, API_ERROR_CODES.validationError)) {
+    addErrorNotification(extractApiErrorMessage(error) || props.errorMessage);
+    return;
+  }
+  // The entity was deleted or merged elsewhere after this dialog opened.
+  if (isNotFoundError(error)) {
     addErrorNotification(extractApiErrorMessage(error) || props.errorMessage);
     return;
   }

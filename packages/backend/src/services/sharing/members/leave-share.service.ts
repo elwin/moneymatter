@@ -80,7 +80,12 @@ const leaveShareImpl = async (params: LeaveShareParams): Promise<LeaveShareImplR
     );
   }
 
-  await share.destroy();
+  // 0 rows means a concurrent leave or the owner's account deletion removed the share
+  // after our read; continuing would notify a possibly deleted user.
+  const deleted = await ResourceShares.destroy({ where: { id: sharedShareId } });
+  if (!deleted) {
+    throw new NotFoundError({ message: 'Shared resource not found' });
+  }
 
   // Household leave severs the broad write-grant between the two users — any
   // transfer pair that crossed the boundary must stop pointing at a partner the

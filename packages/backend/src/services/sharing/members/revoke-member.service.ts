@@ -79,7 +79,12 @@ const revokeMemberImpl = async (params: RevokeMemberParams): Promise<RevokeMembe
   const sharedShareId = share.id;
   const sharedPermission = share.permission;
 
-  await share.destroy();
+  // 0 rows means a concurrent revoke or the member's account deletion removed the share
+  // after our read; continuing would notify a possibly deleted user.
+  const deleted = await ResourceShares.destroy({ where: { id: sharedShareId } });
+  if (!deleted) {
+    throw new NotFoundError({ message: 'Member not found on this shared resource.' });
+  }
 
   // Household revoke severs the broad write-grant between owner and recipient —
   // any cross-user transfer pair between them must unlink so neither side keeps

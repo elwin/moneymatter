@@ -4,6 +4,7 @@ import { OAUTH_PROVIDERS_LIST } from '@bt/shared/types';
 import { EnvVar, isEnvConfigured } from '@common/utils/env';
 import { createSessionHooks } from '@config/auth-hooks/session-hooks';
 import { shouldUseSecureCookies } from '@config/should-use-secure-cookies';
+import { isAuthApiError } from '@controllers/helpers/error-handler';
 import { logger } from '@js/utils/logger';
 import { identifyUser, trackSignup } from '@js/utils/posthog';
 import { captureException } from '@js/utils/sentry';
@@ -38,6 +39,9 @@ const pool = new Pool({
       ? `${process.env.APPLICATION_DB_DATABASE}-${process.env.JEST_WORKER_ID}`
       : process.env.APPLICATION_DB_DATABASE,
 });
+
+// Without a listener, an idle client killed by Postgres (e.g. DB restart) crashes the process.
+pool.on('error', (error) => logger.error({ message: 'better-auth pg pool idle client error', error }));
 
 // In dev mode, trust the common localhost variants of the frontend port so a
 // self-host setup with a misconfigured ALLOWED_ORIGINS still completes auth.
@@ -262,8 +266,8 @@ export const auth = betterAuth({
     // Defining onError replaces better-auth's own error logging, so 4xx are
     // logged too (info: Loki only, no Sentry noise from failed logins).
     onError: (error) => {
-      if (error instanceof APIError && error.status !== 'INTERNAL_SERVER_ERROR') {
-        logger.info(`better-auth ${error.status}: ${error.message}`, { code: error.body?.code });
+      if (isAuthApiError(error) && error.statusCode < 500) {
+        logger.info(`better-auth ${error.statusCode}: ${error.message}`, { code: error.body?.code });
         return;
       }
       logger.error({ message: 'better-auth API error', error: error as Error });

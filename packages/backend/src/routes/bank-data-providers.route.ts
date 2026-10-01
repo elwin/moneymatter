@@ -10,6 +10,7 @@ import listUserConnections from '@controllers/bank-data-providers/connections/li
 import loadTransactionsForPeriod from '@controllers/bank-data-providers/connections/load-transactions-for-period';
 import reauthorizeConnection from '@controllers/bank-data-providers/connections/reauthorize-connection';
 import reconcileDuplicatesForAccount from '@controllers/bank-data-providers/connections/reconcile-duplicates-for-account';
+import syncConnection from '@controllers/bank-data-providers/connections/sync-connection';
 import syncTransactionsForAccount from '@controllers/bank-data-providers/connections/sync-transactions-for-account';
 import updateConnectionDetails from '@controllers/bank-data-providers/connections/update-connection-details';
 import listBanks from '@controllers/bank-data-providers/enablebanking/list-banks';
@@ -114,6 +115,15 @@ router.post(
   checkBaseCurrencyLock,
   validateEndpoint(syncTransactionsForAccount.schema),
   syncTransactionsForAccount.handler,
+);
+router.post(
+  '/connections/:connectionId/sync',
+  authenticateSession,
+  requireFeature(FEATURES.bank_providers),
+  blockDemoUsers,
+  checkBaseCurrencyLock,
+  validateEndpoint(syncConnection.schema),
+  syncConnection.handler,
 );
 router.post(
   '/connections/:connectionId/reconcile-duplicates',

@@ -57,6 +57,7 @@ import { useChartTooltipPosition } from '@/composable/charts/use-chart-tooltip-p
 import { useDateLocale } from '@/composable/use-date-locale';
 import type { endpointsTypes } from '@bt/shared/types';
 import * as d3 from 'd3';
+import { parseISO } from 'date-fns';
 import { useResizeObserver } from '@vueuse/core';
 import { computed, reactive, ref, watch } from 'vue';
 
@@ -100,7 +101,7 @@ const getColors = () => {
 };
 
 const formatPeriodLabel = (periodStart: string): string => {
-  const date = new Date(periodStart);
+  const date = parseISO(periodStart);
   return props.granularity === 'monthly' ? format(date, 'MMM yy') : format(date, 'MMM d');
 };
 
@@ -259,8 +260,8 @@ const renderChart = () => {
 };
 
 function handleMouseEnter(event: MouseEvent, d: endpointsTypes.BudgetSpendingPeriod) {
-  const startDate = new Date(d.periodStart);
-  const endDate = new Date(d.periodEnd);
+  const startDate = parseISO(d.periodStart);
+  const endDate = parseISO(d.periodEnd);
   const isSameMonth = startDate.getMonth() === endDate.getMonth() && startDate.getFullYear() === endDate.getFullYear();
 
   tooltip.period = isSameMonth

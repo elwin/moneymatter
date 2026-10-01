@@ -60,7 +60,7 @@ Unsure? Comment on the string, or pick the reading the key suggests.
 
 ## 7. Plurals
 
-- Web-app forms are separated by " | " and picked by count, not by your language's rules: 1 form (no " | ") fits every number; 2 forms are [exactly 1 | other]; 3 forms are [0 | exactly 1 | other]; a 4th never shows.
+- Unless your language guide says otherwise, web-app forms are separated by " | " and picked by count, not by your language's rules: 1 form (no " | ") fits every number; 2 forms are [exactly 1 | other]; 3 forms are [0 | exactly 1 | other]; a 4th never shows.
 - Keep an English zero form ("Select accounts | Import 1 account | …") as the 0 branch.
 - If your grammar needs other forms (few, many), rephrase so one form fits every number: "Categories excluded: {count}".
 - Backend strings have one form. Rephrase so any number reads correctly: "Loaded {{count}} transactions." → "Transactions loaded: {{count}}."

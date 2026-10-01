@@ -96,8 +96,7 @@ export const createReleaseNotifications = withTransaction(
       payload,
     }));
 
-    // Use individualHooks to trigger @BeforeCreate for UUID generation
-    await Notifications.bulkCreate(notifications, { individualHooks: true });
+    await Notifications.bulkCreate(notifications);
 
     logger.info(`Created ${notifications.length} release notifications for version ${version}`);
 

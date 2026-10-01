@@ -80,30 +80,31 @@ export function useSubmitTransaction({
             isCurrenciesDifferent,
           }),
         );
-        // A transfer's two legs give no single row a caller could act on, so answer with nothing.
-        if (isTransferTx) return {};
-
         // The row is already saved, so a failed upload is reported without failing the submit.
+        // Each transfer leg gets its own copy, so deleting it from one leg keeps the other.
         let attachmentsFailed = false;
         for (const file of pendingAttachments) {
-          try {
-            await uploadTransactionAttachment({ transactionId: created[0]!.id, file });
-          } catch (error) {
-            attachmentsFailed = true;
-            // The API client already announces an expired session on 401 and toasts the 402.
-            if (
-              isApiErrorWithCode(error, API_ERROR_CODES.unauthorized) ||
-              isApiErrorWithCode(error, API_ERROR_CODES.planRequired)
-            ) {
-              continue;
+          for (const tx of created) {
+            try {
+              await uploadTransactionAttachment({ transactionId: tx.id, file });
+            } catch (error) {
+              attachmentsFailed = true;
+              // The API client already announces an expired session on 401 and toasts the 402.
+              if (
+                isApiErrorWithCode(error, API_ERROR_CODES.unauthorized) ||
+                isApiErrorWithCode(error, API_ERROR_CODES.planRequired)
+              ) {
+                continue;
+              }
+              addErrorNotification(
+                extractApiErrorMessage(error) ||
+                  i18n.global.t('dialogs.manageTransaction.form.attachments.errors.upload'),
+              );
             }
-            addErrorNotification(
-              extractApiErrorMessage(error) ||
-                i18n.global.t('dialogs.manageTransaction.form.attachments.errors.upload'),
-            );
           }
         }
-        return { created: created[0], attachmentsFailed };
+        // A transfer's two legs give no single row a caller could act on.
+        return { created: isTransferTx ? undefined : created[0], attachmentsFailed };
       } else if (linkedTransaction) {
         await linkTransactions({
           ids: [[transaction!.id, linkedTransaction.id]],

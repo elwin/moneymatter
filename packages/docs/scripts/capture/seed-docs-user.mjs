@@ -74,8 +74,14 @@ if (!(await signIn())) {
 log(`signed in as ${EMAIL}`);
 
 if (page.url().includes('/welcome')) {
+  // Confirm is a silent no-op until the currency list loads and preselects USD.
+  await page.getByRole('combobox').filter({ hasText: 'USD' }).waitFor();
   await page.getByRole('button', { name: 'Confirm Currency' }).click();
-  await page.waitForTimeout(5000);
+  const deadline = Date.now() + 15_000;
+  while (!(await call({ path: '/user/currencies/base' }))) {
+    if (Date.now() > deadline) throw new Error('Confirm Currency did not set a base currency within 15s');
+    await page.waitForTimeout(500);
+  }
   log('base currency set to USD');
 }
 
@@ -127,13 +133,11 @@ if (!accounts.some((a) => a.name === MANUAL_ACCOUNT)) {
   log(`${MANUAL_ACCOUNT} created with 3 expenses`);
 
   await page.goto(APP + '/transactions');
-  await page.getByText('Office chair').first().click();
-  await page.getByRole('dialog').getByText('Add attachments').click();
-  await page
-    .locator('input[type="file"]')
-    .first()
-    .setInputFiles(await makeAttachmentFiles());
-  await page.getByText('invoice-office-chair.pdf').waitFor({ timeout: 30_000 });
+  await page.getByRole('row').filter({ hasText: 'Office chair' }).getByRole('button', { name: 'Open details' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Add attachments' }).click();
+  const attachments = page.getByRole('dialog', { name: /^Attachments/ });
+  await attachments.locator('input[type="file"]').setInputFiles(await makeAttachmentFiles());
+  await attachments.getByText('invoice-office-chair.pdf').waitFor({ timeout: 30_000 });
   await page.keyboard.press('Escape');
   await page.keyboard.press('Escape');
   log('receipt and invoice attached to "Office chair"');

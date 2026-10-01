@@ -199,6 +199,11 @@ export const syncTransactions = async (
   return response;
 };
 
+export const syncConnection = async ({ connectionId }: { connectionId: string }): Promise<SyncResult> => {
+  const response = await api.post(`/bank-data-providers/connections/${connectionId}/sync`);
+  return response;
+};
+
 export interface ReconcileDuplicatesResult {
   mergedCount: number;
   skippedCount: number;

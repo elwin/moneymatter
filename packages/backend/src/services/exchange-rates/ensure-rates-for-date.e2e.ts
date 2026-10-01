@@ -10,6 +10,7 @@ import {
 } from '@tests/mocks/exchange-rates/endpoints';
 import { createCallsCounter, createOverride } from '@tests/mocks/helpers';
 import { format, startOfDay } from 'date-fns';
+import { HttpResponse, http } from 'msw';
 
 import { API_LAYER_DATE_FORMAT } from './constants';
 import { EXCHANGE_RATE_PROVIDER_TYPE } from './providers/types';
@@ -397,6 +398,16 @@ describe('Exchange Rates Functionality', () => {
     apiLayerOverride.setOverride({ status: 500 });
 
     await expect(helpers.syncExchangeRates().then((m) => m.statusCode)).resolves.toBe(502);
+  });
+
+  it('stops rotating ApiLayer keys when the request gets no HTTP response', async () => {
+    currencyRatesApiOverride.setOverride({ status: 500 });
+    fawazOverride.setOverride({ status: 500 });
+    global.mswMockServer.use(http.all(API_LAYER_ENDPOINT_REGEX, () => HttpResponse.error()));
+
+    await expect(helpers.syncExchangeRates().then((m) => m.statusCode)).resolves.toBe(502);
+
+    expect(apiLayerCounter.count).toBe(1);
   });
 
   it('should handle ApiLayer 429 by trying next available key', async () => {

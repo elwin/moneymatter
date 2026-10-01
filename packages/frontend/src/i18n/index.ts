@@ -44,8 +44,18 @@ export const resilientMessageCompiler: MessageCompiler = (message, context) => {
   }
 };
 
-const ukPluralRules = new Intl.PluralRules('uk');
-const UK_PLURAL_INDEX: Record<string, number> = { one: 0, few: 1, many: 2 };
+const SLAVIC_PLURAL_INDEX: Record<string, number> = { one: 0, few: 1 };
+
+// vue-i18n's default three-branch rule is [zero, one, many]; these locales are
+// written [one, few, many]. Clamping covers keys with fewer branches than that,
+// which would otherwise resolve to a branch vue-i18n throws on.
+export const createSlavicPluralRule = ({ locale }: { locale: string }) => {
+  const rules = new Intl.PluralRules(locale);
+  return (choice: number, choicesLength: number) =>
+    Math.min(SLAVIC_PLURAL_INDEX[rules.select(Math.abs(choice))] ?? 2, choicesLength - 1);
+};
+
+const SLAVIC_LOCALES = [LOCALES.UKRAINIAN, LOCALES.RUSSIAN, LOCALES.SLOVAK];
 
 // Create i18n instance with common chunk pre-loaded
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -57,13 +67,7 @@ export const i18n: I18n<any, {}, {}, string, false> = createI18n<{}, string, fal
     en: enCommon,
   },
   messageCompiler: resilientMessageCompiler,
-  pluralRules: {
-    // vue-i18n's default three-branch rule is [zero, one, many]; the uk files are
-    // written [one, few, many]. Clamping covers keys with fewer branches than
-    // that, which would otherwise resolve to a branch vue-i18n throws on.
-    uk: (choice: number, choicesLength: number) =>
-      Math.min(UK_PLURAL_INDEX[ukPluralRules.select(Math.abs(choice))] ?? 2, choicesLength - 1),
-  },
+  pluralRules: Object.fromEntries(SLAVIC_LOCALES.map((locale) => [locale, createSlavicPluralRule({ locale })])),
   globalInjection: true,
   missingWarn: process.env.NODE_ENV === 'development',
   fallbackWarn: process.env.NODE_ENV === 'development',

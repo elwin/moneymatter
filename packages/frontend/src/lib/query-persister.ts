@@ -42,14 +42,25 @@ const persistedQueryStore: UseStore | undefined = isBrowserPersistenceAvailable(
   ? createStore('budget-tracker', 'query-cache')
   : undefined;
 
+// Set when a wipe fails: the store may still hold another user's rows, so it is
+// neither read nor written until a later wipe succeeds.
+let isStoreUnwiped = false;
+
+// Every call fails soft: a corrupt IndexedDB (Chrome "UnknownError: Internal error.")
+// must degrade to unpersisted, or the post-auth fetches reject and block sign-in.
 const idbStorage: AsyncStorage<string> | undefined = persistedQueryStore
   ? {
-      getItem: (key) => get<string>(key, persistedQueryStore),
-      setItem: (key, value) =>
-        value === SKIP_PERSIST_SENTINEL ? del(key, persistedQueryStore) : set(key, value, persistedQueryStore),
-      removeItem: (key) => del(key, persistedQueryStore),
+      getItem: (key) =>
+        isStoreUnwiped ? Promise.resolve(undefined) : get<string>(key, persistedQueryStore).catch(() => undefined),
+      setItem: (key, value) => {
+        if (isStoreUnwiped) return Promise.resolve();
+        return (
+          value === SKIP_PERSIST_SENTINEL ? del(key, persistedQueryStore) : set(key, value, persistedQueryStore)
+        ).catch(() => {});
+      },
+      removeItem: (key) => del(key, persistedQueryStore).catch(() => {}),
       // Lets `persisterGc` enumerate rows (see `collectPersistedQueryGarbage`).
-      entries: () => entries<string, string>(persistedQueryStore),
+      entries: () => entries<string, string>(persistedQueryStore).catch(() => []),
     }
   : undefined;
 
@@ -138,7 +149,7 @@ export const persistedImmutableQueryFn = persister?.persisterFn;
  */
 export const removePersistedQuery = async ({ queryKey }: { queryKey: QueryKey }): Promise<void> => {
   if (!persistedQueryStore) return;
-  await del(`${PERSISTER_KEY_PREFIX}-${hashKey(queryKey)}`, persistedQueryStore);
+  await del(`${PERSISTER_KEY_PREFIX}-${hashKey(queryKey)}`, persistedQueryStore).catch(() => {});
 };
 
 /**
@@ -153,10 +164,16 @@ export const collectPersistedQueryGarbage = async (): Promise<void> => {
 /**
  * Wipe every persisted query entry from IndexedDB. Called on logout and when a
  * different user is detected, so one account never restores another's data.
+ * Never rejects, so a broken IndexedDB cannot block sign-in or skip the store
+ * reset on logout; resolves `false` when the wipe failed.
  */
-export const clearPersistedQueries = async (): Promise<void> => {
-  if (!persistedQueryStore) return;
-  await clear(persistedQueryStore);
+export const clearPersistedQueries = async (): Promise<boolean> => {
+  if (!persistedQueryStore) return true;
+  isStoreUnwiped = await clear(persistedQueryStore).then(
+    () => false,
+    () => true,
+  );
+  return !isStoreUnwiped;
 };
 
 /**
@@ -166,8 +183,8 @@ export const clearPersistedQueries = async (): Promise<void> => {
  * flow – logout, user-switch, and the destructive data wipe – so none of them
  * can forget the persisted store and leave one state restoring another's data.
  */
-export const resetQueryCaches = async (queryClient: QueryClient): Promise<void> => {
+export const resetQueryCaches = async (queryClient: QueryClient): Promise<boolean> => {
   queryClient.cancelQueries();
   queryClient.clear();
-  await clearPersistedQueries();
+  return clearPersistedQueries();
 };

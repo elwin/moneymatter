@@ -168,7 +168,7 @@ const calculateMovingAverage = (data: typeof chartData.value, periods: number = 
 };
 
 const formatPeriodLabel = (periodStart: string): string => {
-  const date = new Date(periodStart);
+  const date = parseISO(periodStart);
   return format(date, 'MMM yy');
 };
 
@@ -486,8 +486,8 @@ const renderGroupedBars = (
 };
 
 function handleMouseEnter(event: MouseEvent, d: (typeof chartData.value)[0]) {
-  const startDate = new Date(d.periodStart);
-  const endDate = new Date(d.periodEnd);
+  const startDate = parseISO(d.periodStart);
+  const endDate = parseISO(d.periodEnd);
   const isSameMonth = startDate.getMonth() === endDate.getMonth() && startDate.getFullYear() === endDate.getFullYear();
 
   tooltip.period = isSameMonth

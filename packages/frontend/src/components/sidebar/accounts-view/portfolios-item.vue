@@ -1,19 +1,19 @@
 <script setup lang="ts">
 import Button from '@/components/lib/ui/button/Button.vue';
 import { DesktopOnlyTooltip } from '@/components/lib/ui/tooltip';
-import { usePortfolioSummary } from '@/composable/data-queries/portfolio-summary';
+import { usePortfolioSummaries } from '@/composable/data-queries/portfolio-summary';
 import { useFormatCurrency } from '@/composable/formatters';
 import { ROUTES_NAMES } from '@/routes/constants';
 import { PORTFOLIO_TYPE, PortfolioModel } from '@bt/shared/types/investments';
 import { Building2Icon, EyeOffIcon, LandmarkIcon, PiggyBankIcon, TrendingUpIcon } from '@lucide/vue';
-import { computed, toRef } from 'vue';
+import { computed } from 'vue';
 
 const props = defineProps<{
   portfolio: PortfolioModel;
 }>();
 
-const portfolioId = toRef(() => props.portfolio.id);
-const { data: summary, isLoading: isSummaryLoading } = usePortfolioSummary(portfolioId);
+const { data: summaries, isFetching: isSummaryFetching } = usePortfolioSummaries();
+const summary = computed(() => summaries.value?.find((item) => item.portfolioId === props.portfolio.id));
 const { formatCompactAmount, formatAmountByCurrencyCode } = useFormatCurrency();
 
 const totalValue = computed(() => (summary.value ? Number(summary.value.totalPortfolioValue) : null));
@@ -52,7 +52,7 @@ const portfolioIcon = computed(() => {
           <span class="truncate text-sm">{{ portfolio.name }}</span>
           <EyeOffIcon v-if="!portfolio.isEnabled" class="text-muted-foreground size-3 shrink-0" />
         </div>
-        <template v-if="isSummaryLoading">
+        <template v-if="isSummaryFetching && !summary">
           <div class="bg-muted/30 h-3.5 w-12 shrink-0 animate-pulse rounded" />
         </template>
         <DesktopOnlyTooltip

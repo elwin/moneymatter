@@ -75,10 +75,6 @@ const deleteImportBatchImpl = async ({
     return { deletedCount: 0, deletedIds: [] };
   }
 
-  if (rows.length > maxRows) {
-    throw new ImportBatchTooLargeError({ rowCount: rows.length });
-  }
-
   // `accountType` on the row is a creation-time snapshot, never updated when the account
   // later links to a bank — re-check the CURRENT type here to avoid desyncing a
   // provider-synced balance.
@@ -132,18 +128,26 @@ const deleteImportBatchImpl = async ({
     legsWithExternalTwin = linkedLegs.filter((row) => transferIdsWithExternalTwin.has(row.transferId!));
   }
 
-  if (externalTwinIds.length > 0 && !deleteLinkedTransfers) {
-    // A loan leg has no unlink path (see `unlinkTransferTransactions`) — the twin can
-    // only go away by being deleted, which the caller hasn't opted into.
-    const hasLoanLeg = legsWithExternalTwin.some(
-      (row) => row.transferNature === TRANSACTION_TRANSFER_NATURE.transfer_to_loan,
-    );
-    if (hasLoanLeg) {
-      throw new ValidationError({
-        message: t({ key: 'importExport.batchDeleteLinkedLoanTransfer' }),
-      });
-    }
+  const unlinkExternalTwins = externalTwinIds.length > 0 && !deleteLinkedTransfers;
 
+  // A loan leg has no unlink path (see `unlinkTransferTransactions`) — the twin can
+  // only go away by being deleted, which the caller hasn't opted into.
+  if (
+    unlinkExternalTwins &&
+    legsWithExternalTwin.some((row) => row.transferNature === TRANSACTION_TRANSFER_NATURE.transfer_to_loan)
+  ) {
+    throw new ValidationError({
+      message: t({ key: 'importExport.batchDeleteLinkedLoanTransfer' }),
+    });
+  }
+
+  // After every refusal check, so an undo that can never succeed is rejected inline
+  // instead of being queued and failing in the worker.
+  if (rows.length > maxRows) {
+    throw new ImportBatchTooLargeError({ rowCount: rows.length });
+  }
+
+  if (unlinkExternalTwins) {
     // Unlink BOTH legs (mirrors `unlinkTransferTransactions`) so the surviving external
     // twin lands as a clean standalone row, not a two-leg transfer with no partner.
     // `access: 'unscoped-internal'` matches `deleteTransaction`'s own cascade branch — the

@@ -115,9 +115,59 @@ Money in and out includes everything recorded on the account: income, expenses, 
 
 Accounts synced from a bank get their balance from the bank. See [bank connections](/import/bank-connections/).
 
+## Change the initial balance
+
+If the starting point was wrong from day one, you can edit the account's initial balance.
+
+<Steps>
+
+1. Open the account and select the **Details** tab.
+2. Click the pencil next to **Initial Balance:** (**Edit initial balance**).
+3. Enter the new initial balance. It can be negative.
+4. Click **Save**.
+
+</Steps>
+
+<Screenshot
+  src="/screenshots/accounts/edit-initial-balance-popover.png"
+  alt="The Details tab of an account with the Edit initial balance popover open, showing the Initial Balance field, the hint with a Learn more link, and the Save button."
+  hint="Open /account/:id for a manual account (e.g. the seeded Everyday Checking), select the Details tab and click the pencil next to Initial Balance:. Crop to the Details rows plus the open popover."
+/>
+
+### What changes
+
+The current balance and the whole balance history move by the same amount as your change, every day back to before the first transaction. Net worth and balance charts move with them.
+
+Your transactions aren't touched, so income, spending, category stats and budgets stay the same. Unlike [Adjust balance](#adjust-a-balance), no balance adjustment transaction is created.
+
+Say an account in EUR has an initial balance of 1,000 EUR, a 100 EUR expense on Sep 20 and 300 EUR of income on Sep 25, so it shows 1,200 EUR today. You change the initial balance to 1,500 (+500):
+
+| Date | Transaction | Balance before | Balance after |
+|---|---|---|---|
+| Sep 19 | | 1,000 EUR | 1,500 EUR |
+| Sep 20 | −100 EUR | 900 EUR | 1,400 EUR |
+| Sep 25 | +300 EUR | 1,200 EUR | 1,700 EUR |
+
+The current balance is now 1,700 EUR. The transactions are still −100 and +300 EUR.
+
+If the account isn't in your base currency, the amounts in the account's currency move the same way. The history in your base currency is recalculated at each day's exchange rate in the background, so charts may take a moment to update.
+
+### Initial balance or Adjust balance?
+
+- **Change the initial balance** when the starting point was wrong. For example, you entered today's balance instead of what the account held before your first recorded transaction (see [choose the right initial balance](/accounts/create-an-account/#choose-the-right-initial-balance)). The whole history moves, with no step in the chart.
+- **Use [Adjust balance](#adjust-a-balance)** when the balance drifted from a specific date, for example because you missed a few cash purchases. It records a dated adjustment and only changes the history from that date on.
+
+### When it isn't available
+
+Only the owner of a manual account can change its initial balance. It isn't available for:
+
+- **Accounts connected to a bank.** The bank sets their balance. If you unlink an account from its bank, it becomes a manual account and you can edit it.
+- **Loans.** Use the loan's own edit options instead.
+- **Vehicles.** Their value comes from [depreciation](/accounts/vehicles/#how-the-value-is-estimated) and [value overrides](/accounts/vehicles/#override-the-value).
+
 ## Adjust a balance
 
-Sometimes the balance in MoneyMatter doesn't match your bank. Maybe you missed a few cash purchases, or chose the wrong initial balance. **Adjust balance** fixes this in one step.
+Sometimes the balance in MoneyMatter doesn't match your bank. Maybe you missed a few cash purchases. **Adjust balance** fixes this in one step. If the initial balance was wrong from the start, [change the initial balance](#change-the-initial-balance) instead.
 
 <Steps>
 
@@ -316,7 +366,7 @@ If the account was used to pay off a loan, you need to delete or reassign those 
 
 ## Good to know
 
-- **You can't edit the currency or initial balance yourself** after an account is created. An import may adjust the initial balance for you so your current balance stays the same (see [how an import affects balances](/import/import-from-csv/#how-an-import-affects-balances)). To fix a balance, use [Adjust balance](#adjust-a-balance).
+- **You can't change an account's currency** after it's created. You can [change the initial balance](#change-the-initial-balance) of a manual account, and an import may adjust it for you so your current balance stays the same (see [how an import affects balances](/import/import-from-csv/#how-an-import-affects-balances)). To fix a balance from a specific date, use [Adjust balance](#adjust-a-balance).
 - **Changing your base currency takes a moment.** While it's running, you can't create, edit or delete accounts. Wait for it to finish and try again.
 - **After your trial or plan ends**, your data becomes read-only, including your accounts. See [plans and billing](/settings/plans-and-billing/).
 

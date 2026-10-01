@@ -35,14 +35,20 @@ interface BackupRestoreJobData extends SentryTraceData {
 // lock's own TTL, so this rarely fires — it's the safety net for a huge dataset.
 const LOCK_HEARTBEAT_INTERVAL_MS = 10 * 60 * 1000;
 
+// ponytail: tracks only processors running in this process. A multi-process
+// deployment needs a shared marker such as a Redis key.
+const jobIdsRunningInThisProcess = new Set<string>();
+
 const {
   queue: backupRestoreQueue,
   worker: backupRestoreWorker,
   enqueue,
+  describeFailure,
 } = createImportJobQueue<BackupRestoreJobData, BackupRestoreSummary, BackupRestoreSseProgress>({
   baseName: 'backup-restore',
   sseEventType: SSE_EVENT_TYPES.BACKUP_RESTORE_PROGRESS,
   logLabel: 'Backup Restore',
+  interruptedMessageKey: 'common.jobInterruptedByServerUpdate',
   processJob: async ({ job }) => {
     const { userId, fileContent } = job.data;
     const jobId = job.id!;
@@ -58,6 +64,7 @@ const {
     if (!acquired) {
       throw new Error(t({ key: 'currencies.baseCurrencyChangeInProgress' }));
     }
+    jobIdsRunningInThisProcess.add(jobId);
 
     const heartbeat = setInterval(() => {
       extendBaseCurrencyLockTtlIfOwned({ userId, jobId }).catch((err) => {
@@ -88,13 +95,14 @@ const {
       throw describeRestoreError({ err });
     } finally {
       clearInterval(heartbeat);
-      // A crashed worker skips this; the lock's own TTL is the backstop.
+      // A crashed worker skips this; the status endpoint reconciles the orphan.
       await releaseBaseCurrencyLockIfOwned({ userId, jobId }).catch((err) => {
         logger.error({
           message: `[Backup Restore Worker] Lock release failed for job ${jobId}`,
           error: err instanceof Error ? err : new Error(String(err)),
         });
       });
+      jobIdsRunningInThisProcess.delete(jobId);
     }
   },
 });
@@ -170,7 +178,8 @@ type RestoreJobStateSnapshot =
 /**
  * Read a restore job's current state, scoped to its owner. Resolves `missing`
  * when the job is gone or belongs to another user. The failed branch carries the
- * raw `failedReason` (possibly empty) so each caller applies its own fallback
+ * translated interrupted message for a stalled job, otherwise BullMQ's
+ * `failedReason` (possibly empty) so each caller applies its own fallback
  * message; every other branch is fully normalized.
  */
 async function readRestoreJobState({
@@ -201,7 +210,14 @@ async function readRestoreJobState({
     // Re-fetch once: a job that flips active → failed between getJob and getState
     // can report `failed` while the first snapshot's failedReason is still empty.
     const settled = (await backupRestoreQueue.getJob(jobId)) ?? job;
-    return { kind: 'failed', failedReason: settled.failedReason, progress };
+    const failedReason = describeFailure({ reason: settled.failedReason });
+    // Never release while this job's processor still runs here: BullMQ can fail a
+    // live job as stalled, and a freed lock lets writes interleave with its open
+    // transaction. A killed worker never reaches its `finally`, so its lock is freed here.
+    if (!jobIdsRunningInThisProcess.has(jobId)) {
+      await releaseBaseCurrencyLockIfOwned({ userId, jobId });
+    }
+    return { kind: 'failed', failedReason, progress };
   }
   if (state === 'waiting' || state === 'delayed') {
     return { kind: 'queued', progress };

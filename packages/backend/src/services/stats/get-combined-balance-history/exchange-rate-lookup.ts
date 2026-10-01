@@ -19,15 +19,22 @@ export const buildUserRatesMap = (rows: UserExchangeRateRow[]): Map<string, numb
   return map;
 };
 
+/** `approximated` marks the earliest stored rate standing in for a date that predates it. */
+interface UsdRate {
+  rate: number;
+  approximated: boolean;
+}
+
 /**
- * Closure factory: looks up `1 USD = ? quoteCode` for `dateStr`, walking back
- * to the most recent prior rate when the exact day is missing (weekends,
- * holidays, sparse coverage). Returns `null` when no rate at all is known for
- * this currency.
+ * Closure factory: looks up `1 USD = ? quoteCode` for `dateStr`. Resolution
+ * order: exact day, most recent prior rate (weekends, holidays, sparse
+ * coverage), then the earliest stored rate for a date that predates all of
+ * them. Returns `null` only when no rate at all is known for this currency.
  *
  * `usdRateDatesByQuote` MUST be ascending per quote — the walk stops at the
  * first date strictly greater than `dateStr` and relies on lexicographic order
- * to keep "most recent prior" correct.
+ * to keep "most recent prior" correct, and the first entry is read as the
+ * earliest rate.
  */
 export const createFindLatestUsdRate = ({
   usdRatesMap,
@@ -36,11 +43,11 @@ export const createFindLatestUsdRate = ({
   usdRatesMap: Map<string, number>;
   usdRateDatesByQuote: Map<string, string[]>;
 }) => {
-  return (quoteCode: string, dateStr: string): number | null => {
-    if (quoteCode === API_LAYER_BASE_CURRENCY_CODE) return 1;
+  return (quoteCode: string, dateStr: string): UsdRate | null => {
+    if (quoteCode === API_LAYER_BASE_CURRENCY_CODE) return { rate: 1, approximated: false };
 
     const exact = usdRatesMap.get(`${quoteCode}_${dateStr}`);
-    if (exact !== undefined) return exact;
+    if (exact !== undefined) return { rate: exact, approximated: false };
 
     const dates = usdRateDatesByQuote.get(quoteCode);
     if (!dates || dates.length === 0) return null;
@@ -53,14 +60,20 @@ export const createFindLatestUsdRate = ({
         break;
       }
     }
-    return candidate;
+    if (candidate !== null) return { rate: candidate, approximated: false };
+
+    const earliest = usdRatesMap.get(`${quoteCode}_${dates[0]!}`);
+    return earliest === undefined ? null : { rate: earliest, approximated: true };
   };
 };
 
 /**
  * Closure factory: resolves `currencyCode → userBase` for `dateStr`. Order of
- * precedence: user override > USD-pivot cross-rate > 1:1 fallback. Invokes
- * `onMissingRate(currencyCode)` whenever the fallback fires.
+ * precedence: user override > USD-pivot cross-rate > 1:1 fallback.
+ *
+ * `onMissingRate` fires whenever the result is not a real rate for that day:
+ * with `approximated: true` when a leg used its earliest stored rate for an
+ * earlier date, with `approximated: false` when the conversion fell to 1:1.
  *
  * A stored zero USD-rate is treated as data corruption (only a bad DB write or
  * an upstream provider bug can produce it) — surfaced as an error and declined
@@ -78,8 +91,8 @@ export const createGetExchangeRate = ({
 }: {
   userBaseCurrencyCode: string;
   userRatesMap: Map<string, number>;
-  findLatestUsdRate: (quoteCode: string, dateStr: string) => number | null;
-  onMissingRate: (currencyCode: string) => void;
+  findLatestUsdRate: (quoteCode: string, dateStr: string) => UsdRate | null;
+  onMissingRate: ({ currencyCode, approximated }: { currencyCode: string; approximated: boolean }) => void;
 }) => {
   return (currencyCode: string, dateStr: string): number => {
     if (currencyCode === userBaseCurrencyCode) return 1;
@@ -93,16 +106,20 @@ export const createGetExchangeRate = ({
     const usdToBase = findLatestUsdRate(userBaseCurrencyCode, dateStr);
 
     if (usdToCurrency == null || usdToBase == null) {
-      onMissingRate(currencyCode);
+      onMissingRate({ currencyCode, approximated: false });
       return 1;
     }
 
-    if (usdToCurrency === 0) {
+    if (usdToCurrency.rate === 0) {
       logger.error(`Stored exchange rate is zero for USD->${currencyCode} on ${dateStr}; treating as missing.`);
-      onMissingRate(currencyCode);
+      onMissingRate({ currencyCode, approximated: false });
       return 1;
     }
 
-    return usdToBase / usdToCurrency;
+    if (usdToCurrency.approximated || usdToBase.approximated) {
+      onMissingRate({ currencyCode, approximated: true });
+    }
+
+    return usdToBase.rate / usdToCurrency.rate;
   };
 };

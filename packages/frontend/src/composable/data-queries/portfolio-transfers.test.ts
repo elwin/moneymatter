@@ -17,6 +17,22 @@ describe('invalidateTransferRelatedQueries', () => {
     expect(queryClient.getQueryState(accountKey)?.isInvalidated).toBe(true);
   });
 
+  it('invalidates the batch summaries query together with the per-portfolio summaries', () => {
+    const queryClient = new QueryClient();
+    const keys = [
+      VUE_QUERY_CACHE_KEYS.portfolioSummaries,
+      [...VUE_QUERY_CACHE_KEYS.portfolioSummary, 'portfolio-id', undefined],
+    ];
+
+    keys.forEach((k) => queryClient.setQueryData(k, ['stale']));
+
+    invalidateTransferRelatedQueries(queryClient);
+
+    keys.forEach((k) => {
+      expect(queryClient.getQueryState(k)?.isInvalidated).toBe(true);
+    });
+  });
+
   it('invalidates all transactionChange-tracked queries (widgets, analytics, records)', () => {
     const queryClient = new QueryClient();
     const keys = [

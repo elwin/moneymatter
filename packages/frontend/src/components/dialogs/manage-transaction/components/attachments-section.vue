@@ -41,6 +41,8 @@ import FormRow from './form-row.vue';
 /** Without `transactionId` the section only collects files; the caller uploads them once the row exists. */
 const props = defineProps<{
   transactionId?: string;
+  /** The other transfer leg: uploads land on both, deletes stay per-leg. */
+  mirrorTransactionId?: string;
   disabled?: boolean;
 }>();
 
@@ -100,6 +102,9 @@ const invalidateKeys = [VUE_QUERY_CACHE_KEYS.transactionAttachments, [VUE_QUERY_
 const uploadAndShow = async (variables: { transactionId: string; file: File }) => {
   const created = await uploadTransactionAttachment(variables);
   queryClient.setQueryData<TransactionAttachmentModel[]>(queryKey.value, (current = []) => [...current, created]);
+  if (props.mirrorTransactionId) {
+    await uploadTransactionAttachment({ transactionId: props.mirrorTransactionId, file: variables.file });
+  }
   uploadingNames.value = uploadingNames.value.slice(1);
   return created;
 };
@@ -328,6 +333,31 @@ const confirmDeletion = async () => {
       </div>
     </div>
 
+    <!-- Nested inside the dialog so it stacks above it. -->
+    <ResponsiveAlertDialog
+      :open="pendingDeletion.length > 0"
+      :confirm-label="$t('common.actions.delete')"
+      confirm-variant="destructive"
+      @update:open="(value: boolean) => !value && (pendingDeletion = [])"
+      @confirm="confirmDeletion"
+    >
+      <template v-if="pendingDeletion.length > 1" #title>
+        {{ $t('dialogs.manageTransaction.form.attachments.deleteAllConfirm.title') }}
+      </template>
+      <template v-else #title>{{ $t('dialogs.manageTransaction.form.attachments.deleteConfirm.title') }}</template>
+      <template #description>
+        {{
+          pendingDeletion.length > 1
+            ? $t('dialogs.manageTransaction.form.attachments.deleteAllConfirm.description', {
+                count: pendingDeletion.length,
+              })
+            : $t('dialogs.manageTransaction.form.attachments.deleteConfirm.description', {
+                filename: pendingDeletion[0]?.filename,
+              })
+        }}
+      </template>
+    </ResponsiveAlertDialog>
+
     <template #footer="{ close }">
       <Button
         v-if="showDeleteAll"
@@ -345,28 +375,4 @@ const confirmDeletion = async () => {
   </ResponsiveDialog>
 
   <AttachmentViewerDialog v-model:open="isViewerOpen" :attachment="viewedAttachment" />
-
-  <ResponsiveAlertDialog
-    :open="pendingDeletion.length > 0"
-    :confirm-label="$t('common.actions.delete')"
-    confirm-variant="destructive"
-    @update:open="(value: boolean) => !value && (pendingDeletion = [])"
-    @confirm="confirmDeletion"
-  >
-    <template v-if="pendingDeletion.length > 1" #title>
-      {{ $t('dialogs.manageTransaction.form.attachments.deleteAllConfirm.title') }}
-    </template>
-    <template v-else #title>{{ $t('dialogs.manageTransaction.form.attachments.deleteConfirm.title') }}</template>
-    <template #description>
-      {{
-        pendingDeletion.length > 1
-          ? $t('dialogs.manageTransaction.form.attachments.deleteAllConfirm.description', {
-              count: pendingDeletion.length,
-            })
-          : $t('dialogs.manageTransaction.form.attachments.deleteConfirm.description', {
-              filename: pendingDeletion[0]?.filename,
-            })
-      }}
-    </template>
-  </ResponsiveAlertDialog>
 </template>

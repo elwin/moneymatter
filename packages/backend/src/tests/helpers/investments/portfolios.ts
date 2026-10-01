@@ -4,6 +4,7 @@ import { getPortfolioBalances as _getPortfolioBalances } from '@services/investm
 import { updatePortfolioBalance as _updatePortfolioBalance } from '@services/investments/portfolios/balances';
 import { createPortfolio as _createPortfolio } from '@services/investments/portfolios/create.service';
 import { deletePortfolio as _deletePortfolio } from '@services/investments/portfolios/delete.service';
+import { getPortfolioSummaries as _getPortfolioSummaries } from '@services/investments/portfolios/get-portfolio-summaries.service';
 import { getPortfolioSummary as _getPortfolioSummary } from '@services/investments/portfolios/get-portfolio-summary.service';
 import { getPortfoliosAnnualizedReturns as _getPortfoliosAnnualizedReturns } from '@services/investments/portfolios/get-portfolios-annualized-returns.service';
 import { getPortfolio as _getPortfolio } from '@services/investments/portfolios/get.service';
@@ -198,6 +199,18 @@ export async function getPortfolioSummary<R extends boolean | undefined = false>
     method: 'get',
     url: `/investments/portfolios/${portfolioId}/summary`,
     payload: removeUndefinedKeys({ date }),
+    raw,
+  });
+}
+
+export async function getPortfolioSummaries<R extends boolean | undefined = false>({
+  raw,
+}: {
+  raw?: R;
+} = {}) {
+  return makeRequest<Awaited<ReturnType<typeof _getPortfolioSummaries>>, R>({
+    method: 'get',
+    url: '/investments/portfolios/summaries',
     raw,
   });
 }

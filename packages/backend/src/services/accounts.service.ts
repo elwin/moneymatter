@@ -38,7 +38,9 @@ import { convertCrossUserTransfersForAccountIds } from '@services/sharing/househ
 import { pauseAutomationsReferencing } from '@services/transaction-automations/references';
 import { Op } from 'sequelize';
 
+import { absorbBalanceAdjustment } from './accounts/absorb-balance-adjustment';
 import { archiveAccount as performArchiveSideEffects } from './accounts/archive-account';
+import { lockAccountRow } from './accounts/lock-account-row';
 import { removePortfolioTransfersForAccounts } from './accounts/remove-portfolio-transfers-for-accounts';
 import { restampRefInitialBalance } from './accounts/restamp-ref-initial-balance';
 import { unlinkSubscriptionsFromAccount } from './accounts/unlink-subscriptions-from-account';
@@ -249,6 +251,26 @@ export const createAccount = withTransaction(
   },
 );
 
+const updateInitialBalance = withTransaction(
+  async ({ userId, accountId, initialBalance }: { userId: number; accountId: string; initialBalance: Money }) => {
+    const account = await findOrThrowNotFound({
+      query: lockAccountRow({ accountId, userId }),
+      message: t({ key: 'accounts.accountNotFound' }),
+    });
+    // absorbBalanceAdjustment keeps a non-system account's initialBalance and would only move currentBalance.
+    if (account.type !== ACCOUNT_TYPES.system) {
+      throw new ValidationError({
+        message: t({ key: 'accounts.initialBalanceOnlySystem' }),
+      });
+    }
+
+    const delta = initialBalance.subtract(account.initialBalance);
+    if (delta.isZero()) return;
+
+    await absorbBalanceAdjustment({ userId, accountId, amountDelta: delta });
+  },
+);
+
 export const updateAccount = withTransaction(
   async ({
     id,
@@ -257,6 +279,7 @@ export const updateAccount = withTransaction(
     logoDomain,
     logoInitials,
     logoColor,
+    initialBalance: nextInitialBalance,
     ...payload
   }: Accounts.UpdateAccountByIdPayload &
     (Pick<Accounts.UpdateAccountByIdPayload, 'id'> | Pick<Accounts.UpdateAccountByIdPayload, 'externalId'>) & {
@@ -267,6 +290,13 @@ export const updateAccount = withTransaction(
        */
       loanBalanceCorrection?: boolean;
     }) => {
+    if (nextInitialBalance !== undefined && payload.currentBalance !== undefined) {
+      throw new ValidationError({ message: t({ key: 'accounts.initialAndCurrentBalanceTogether' }) });
+    }
+    if (nextInitialBalance !== undefined) {
+      await updateInitialBalance({ userId: payload.userId, accountId: id, initialBalance: nextInitialBalance });
+    }
+
     const accountData = await findOrThrowNotFound({
       query: Accounts.getAccountById({ id, userId: payload.userId }),
       message: t({ key: 'accounts.accountNotFound' }),

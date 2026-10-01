@@ -10,6 +10,10 @@ import SecurityPricing from '@models/investments/security-pricing.model';
 import UserExchangeRates from '@models/user-exchange-rates.model';
 import UsersCurrencies from '@models/users-currencies.model';
 import { API_LAYER_BASE_CURRENCY_CODE } from '@services/exchange-rates/constants';
+import {
+  createFindLatestUsdRate,
+  createGetExchangeRate,
+} from '@services/stats/get-combined-balance-history/exchange-rate-lookup';
 import { differenceInDays, endOfDay, format, parseISO, startOfDay, subDays } from 'date-fns';
 import { Op } from 'sequelize';
 
@@ -266,44 +270,14 @@ export const getPortfoliosAnnualizedReturns = async ({
   }
 
   const missingRateCurrencies = new Set<string>();
-
-  // `1 USD = ? quoteCode` for `dateStr`, falling back to the most recent prior
-  // rate when the exact day is missing. `null` when nothing is known.
-  const findLatestUsdRate = (quoteCode: string, dateStr: string): number | null => {
-    if (quoteCode === API_LAYER_BASE_CURRENCY_CODE) return 1;
-    const exact = usdRatesMap.get(`${quoteCode}_${dateStr}`);
-    if (exact !== undefined) return exact;
-    const dates = usdRateDatesByQuote.get(quoteCode);
-    if (!dates || dates.length === 0) return null;
-    let candidate: number | null = null;
-    for (const d of dates) {
-      if (d <= dateStr) candidate = usdRatesMap.get(`${quoteCode}_${d}`) ?? candidate;
-      else break;
-    }
-    return candidate;
-  };
-
-  // Multiplier converting 1 unit of `currencyCode` into the user's base currency.
-  const getExchangeRate = (currencyCode: string, dateStr: string): number => {
-    if (currencyCode === baseCurrencyCode) return 1;
-
-    const userOverride = userRatesMap.get(`${currencyCode}_${dateStr}`);
-    if (userOverride !== undefined) return userOverride;
-
-    // Cross-rate via USD pivot: base = currency * (USD→base) / (USD→currency).
-    const usdToCurrency = findLatestUsdRate(currencyCode, dateStr);
-    const usdToBase = findLatestUsdRate(baseCurrencyCode, dateStr);
-
-    if (usdToCurrency == null || usdToBase == null || usdToCurrency === 0) {
-      if (usdToCurrency === 0) {
-        logger.error(`Stored exchange rate is zero for USD->${currencyCode} on ${dateStr}; treating as missing.`);
-      }
-      missingRateCurrencies.add(currencyCode);
-      return 1;
-    }
-
-    return usdToBase / usdToCurrency;
-  };
+  const getExchangeRate = createGetExchangeRate({
+    userBaseCurrencyCode: baseCurrencyCode,
+    userRatesMap,
+    findLatestUsdRate: createFindLatestUsdRate({ usdRatesMap, usdRateDatesByQuote }),
+    onMissingRate: ({ currencyCode, approximated }) => {
+      if (!approximated) missingRateCurrencies.add(currencyCode);
+    },
+  });
 
   // Market value (base currency) of a holdings map valued at `dateStr`.
   const valueHoldings = (holdings: Map<string, HoldingState>, dateStr: string): number => {

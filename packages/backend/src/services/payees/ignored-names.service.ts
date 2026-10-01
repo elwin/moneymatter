@@ -3,6 +3,7 @@ import { ConflictError, NotFoundError } from '@js/errors';
 import PayeeIgnoredNames from '@models/payee-ignored-names.model';
 import type Payees from '@models/payees.model';
 
+import { insertOrAdopt } from '../common/run-in-savepoint';
 import { withTransaction } from '../common/with-transaction';
 import { parsePayeeName, resolveNormalizedName } from './payee-namespace';
 import { deletePayee, loadPayeeOrThrow } from './payees.service';
@@ -53,10 +54,9 @@ export const addPayeeIgnoredName = withTransaction(
       await deletePayee({ userId, id: hit.payeeId });
     }
 
-    return PayeeIgnoredNames.create({
-      userId,
-      normalizedName: normalized,
-      rawSample: display,
+    return insertOrAdopt({
+      insert: () => PayeeIgnoredNames.create({ userId, normalizedName: normalized, rawSample: display }),
+      adopt: () => PayeeIgnoredNames.findOne({ where: { userId, normalizedName: normalized } }),
     });
   },
 );
@@ -112,7 +112,7 @@ export const ignorePayeeNames = async ({ userId, payees }: { userId: number; pay
     .map(([normalized, rawSample]) => ({ userId, normalizedName: normalized, rawSample }));
 
   if (toCreate.length > 0) {
-    await PayeeIgnoredNames.bulkCreate(toCreate);
+    await PayeeIgnoredNames.bulkCreate(toCreate, { ignoreDuplicates: true });
   }
 
   return { addedCount: toCreate.length };

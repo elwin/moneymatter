@@ -5,8 +5,10 @@ import { logger } from '@js/utils/logger';
 
 /** Structural stand-in for better-auth's `isAPIError` — its `better-auth/api` subpath types
  *  don't resolve under this tsconfig, and the real guard also falls back to a name check. */
-const isAuthApiError = (e: Error): e is Error & { statusCode: number; body?: { message?: string; code?: string } } =>
-  e.name === 'APIError' && typeof (e as { statusCode?: unknown }).statusCode === 'number';
+export const isAuthApiError = (
+  e: unknown,
+): e is Error & { statusCode: number; body?: { message?: string; code?: string } } =>
+  e instanceof Error && e.name === 'APIError' && typeof (e as { statusCode?: unknown }).statusCode === 'number';
 
 export function errorHandler(res: CustomResponse, err: Error) {
   if (err instanceof CustomError) {

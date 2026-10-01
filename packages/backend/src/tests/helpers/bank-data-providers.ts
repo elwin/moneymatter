@@ -7,6 +7,7 @@ import * as listUserConnectionsService from '@services/bank-data-providers/conne
 import * as reconcileDuplicatesService from '@services/bank-data-providers/connection/reconcile-duplicates-for-account';
 import { listSupportedProviders } from '@services/bank-data-providers/list-supported-providers.service';
 import type * as getUserAccountsSyncStatusService from '@services/bank-data-providers/sync/get-user-sync-status';
+import type { queueConnectionSync } from '@services/bank-data-providers/sync/sync-manager';
 
 import { MakeRequestReturn, UtilizeReturnType, makeRequest } from './common';
 
@@ -172,6 +173,20 @@ export function syncTransactionsForAccount<R extends boolean | undefined = false
     payload: {
       accountId,
     },
+    raw,
+  });
+}
+
+export function syncConnection<R extends boolean | undefined = false>({
+  connectionId,
+  raw,
+}: {
+  connectionId: string;
+  raw?: R;
+}) {
+  return makeRequest<Awaited<ReturnType<typeof queueConnectionSync>>, R>({
+    method: 'post',
+    url: `/bank-data-providers/connections/${connectionId}/sync`,
     raw,
   });
 }
@@ -356,6 +371,7 @@ export default {
   listExternalAccounts,
   connectSelectedAccounts,
   syncTransactionsForAccount,
+  syncConnection,
   loadTransactionsForPeriod,
   reconcileDuplicates,
   getSyncJobProgress,

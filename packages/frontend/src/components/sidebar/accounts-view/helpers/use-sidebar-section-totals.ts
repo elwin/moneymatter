@@ -1,8 +1,7 @@
 import { loadAccountGroups } from '@/api/account-groups';
 import { VUE_QUERY_CACHE_KEYS } from '@/common/const';
 import { useLoans } from '@/composable/data-queries/loans';
-import { portfolioSummaryQueryOptions } from '@/composable/data-queries/portfolio-summary';
-import { usePortfolios } from '@/composable/data-queries/portfolios';
+import { usePortfolioSummaries } from '@/composable/data-queries/portfolio-summary';
 import { useVentureDeals } from '@/composable/data-queries/venture/deals';
 import { useBaseBalanceTotals } from '@/composable/use-base-balance-totals';
 import { useIdleEnabled } from '@/composable/use-idle-enabled';
@@ -10,7 +9,7 @@ import { useSidebarSections } from '@/composable/use-sidebar-sections';
 import { partitionLoans } from '@/pages/loans/utils/partition-loans';
 import { useAccountsStore } from '@/stores';
 import { ACCOUNT_CATEGORIES, AccountModel } from '@bt/shared/types';
-import { useQueries, useQuery } from '@tanstack/vue-query';
+import { useQuery } from '@tanstack/vue-query';
 import { storeToRefs } from 'pinia';
 import { computed } from 'vue';
 
@@ -57,33 +56,21 @@ export const useSidebarSectionTotals = () => {
   // the browser is idle so above-the-fold dashboard data loads first.
   const idleEnabled = useIdleEnabled();
 
-  const { data: portfolios } = usePortfolios();
-  const visiblePortfolios = computed(() => (portfolios.value ?? []).filter((p) => !p.deletedAt));
-
-  // One summary query per portfolio via the shared factory, so these dedupe with the per-row
-  // usePortfolioSummary calls (identical cache keys) instead of firing a second request each.
-  // Only this eager sidebar roll-up is idle-gated; the per-row usePortfolioSummary keeps its own
-  // enabled logic, so a portfolio detail page visited directly still fetches immediately.
-  const portfolioSummaries = useQueries({
-    queries: computed(() =>
-      visiblePortfolios.value.map((portfolio) => ({
-        ...portfolioSummaryQueryOptions({ portfolioId: portfolio.id }),
-        enabled: idleEnabled.value,
-      })),
-    ),
+  // Only this roll-up observer is idle-gated. The sidebar rows observe the same query ungated,
+  // so an open Portfolios section still loads its values at once.
+  const { data: portfolioSummaries, isLoading: isPortfoliosTotalLoading } = usePortfolioSummaries({
+    enabled: idleEnabled,
   });
 
   const portfoliosTotal = computed(() => {
     let total = 0;
-    for (const result of portfolioSummaries.value) {
-      if (!result.data) continue;
-      total += Number(result.data.totalPortfolioValueInBaseCurrency);
+    for (const summary of portfolioSummaries.value ?? []) {
+      total += Number(summary.totalPortfolioValueInBaseCurrency);
     }
     // Portfolio values are FX-blended market estimates — holdings priced in their own currencies,
     // converted to base — so the roll-up is always approximate.
     return { total, isApprox: true };
   });
-  const isPortfoliosTotalLoading = computed(() => portfolioSummaries.value.some((result) => result.isLoading));
 
   const { data: ventureDeals } = useVentureDeals({ enabled: idleEnabled });
   const venturesCount = computed(() => (ventureDeals.value?.data ?? []).length);

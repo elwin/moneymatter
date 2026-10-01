@@ -6,7 +6,7 @@ import { Job, Queue, Worker } from 'bullmq';
 
 import { syncTransactionsForAccount, withAccountSyncLock } from '../connection/sync-transactions-for-account';
 import { bankProviderRegistry } from '../registry';
-import { SyncStatus, setAccountSyncStatus } from './sync-status-tracker';
+import { SyncStatus, setAccountsSyncStatus } from './sync-status-tracker';
 
 interface AccountSyncJobData extends SentryTraceData {
   userId: number;
@@ -61,12 +61,7 @@ const markAccountsFailed = ({
   accountIds: RecordId[];
   message: string;
   userId: number;
-}) =>
-  Promise.all(
-    accountIds.map((accountId) =>
-      setAccountSyncStatus({ accountId, status: SyncStatus.FAILED, error: message, userId }),
-    ),
-  );
+}) => setAccountsSyncStatus({ accountIds, status: SyncStatus.FAILED, error: message, userId });
 
 async function processAccountSync({
   userId,
@@ -198,20 +193,31 @@ export async function enqueueAccountSync({
       ? [{ jobId: `account-sync-${connectionId}`, accountIds }]
       : accountIds.map((accountId) => ({ jobId: `account-sync-${accountId}`, accountIds: [accountId] }));
 
+  const pending: typeof jobs = [];
   for (const job of jobs) {
     // Finished jobs are removed, so an existing job is one that is still
     // waiting, active or delayed: this sync is already in flight.
     const existing = await accountSyncQueue.getJob(job.jobId);
-    if (existing) continue;
+    if (!existing) pending.push(job);
+  }
+  if (pending.length === 0) return;
 
-    await Promise.all(
-      job.accountIds.map((accountId) => setAccountSyncStatus({ accountId, status: SyncStatus.QUEUED, userId })),
-    );
+  await setAccountsSyncStatus({
+    accountIds: pending.flatMap((job) => job.accountIds),
+    status: SyncStatus.QUEUED,
+    userId,
+  });
 
+  for (const [index, job] of pending.entries()) {
     try {
       await addSyncJob({ userId, connectionId, providerType, accountIds: job.accountIds, jobId: job.jobId });
     } catch (error) {
-      await markAccountsFailed({ accountIds: job.accountIds, message: (error as Error).message, userId });
+      // Jobs after this one are never added, so their QUEUED accounts must fail too.
+      await markAccountsFailed({
+        accountIds: pending.slice(index).flatMap((pendingJob) => pendingJob.accountIds),
+        message: (error as Error).message,
+        userId,
+      });
       throw error;
     }
   }

@@ -1,6 +1,6 @@
 <template>
-  <div class="flex items-center justify-between gap-2 rounded-sm px-2 py-1.5">
-    <span class="text-sm">
+  <div class="flex items-center justify-between gap-2 rounded-md px-2 py-2">
+    <span class="text-sm font-medium">
       {{ $t('dashboard.widgets.common.includePlanned') }}
       <ResponsiveTooltip
         :delay-duration="100"

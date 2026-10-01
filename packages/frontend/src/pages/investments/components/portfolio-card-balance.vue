@@ -1,6 +1,6 @@
 <template>
   <!-- Loading State -->
-  <div v-if="isLoading" class="space-y-1.5">
+  <div v-if="isFetching && !summary" class="space-y-1.5">
     <div class="bg-muted h-7 w-28 animate-pulse rounded" />
     <div class="bg-muted h-5 w-24 animate-pulse rounded" />
     <div class="bg-muted h-4 w-20 animate-pulse rounded" />
@@ -33,19 +33,19 @@
 </template>
 
 <script setup lang="ts">
-import { usePortfolioSummary } from '@/composable/data-queries/portfolio-summary';
+import { usePortfolioSummaries } from '@/composable/data-queries/portfolio-summary';
 import { useFormatCurrency } from '@/composable/formatters';
 import type { UserCurrencyModel } from '@bt/shared/types';
 import { TrendingDownIcon, TrendingUpIcon } from '@lucide/vue';
-import { computed, toRef } from 'vue';
+import { computed } from 'vue';
 
 const props = defineProps<{
   portfolioId: string;
   currencies: UserCurrencyModel[];
 }>();
 
-const portfolioId = toRef(props, 'portfolioId');
-const { data: summary, isLoading } = usePortfolioSummary(portfolioId);
+const { data: summaries, isFetching } = usePortfolioSummaries();
+const summary = computed(() => summaries.value?.find((item) => item.portfolioId === props.portfolioId));
 const { formatCompactAmount } = useFormatCurrency();
 
 const hasValue = computed(

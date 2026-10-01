@@ -89,6 +89,32 @@ async function runCsvImport({
   return progress.summary;
 }
 
+/** Connects a USD account to LunchFlow, turning it bank-linked after its import. */
+async function linkAccountToLunchFlow({ accountId }: { accountId: string }) {
+  const { connectionId } = await helpers.bankDataProviders.connectProvider({
+    providerType: BANK_PROVIDER_TYPE.LUNCHFLOW,
+    credentials: { apiKey: VALID_LUNCHFLOW_API_KEY },
+    raw: true,
+  });
+  global.mswMockServer.use(
+    getLunchFlowTransactionsMock({
+      response: getMockedLunchFlowTransactions(0),
+      accountId: LUNCHFLOW_EXTERNAL_ACCOUNT_ID,
+    }),
+    getLunchFlowBalanceMock({
+      accountId: LUNCHFLOW_EXTERNAL_ACCOUNT_ID,
+      response: { balance: { amount: asDecimal(0), currency: 'USD' } },
+    }),
+  );
+  const linkResponse = await helpers.linkAccountToBankConnection({
+    id: accountId,
+    connectionId,
+    externalAccountId: LUNCHFLOW_EXTERNAL_ACCOUNT_ID,
+    raw: false,
+  });
+  expect(linkResponse.statusCode).toBe(200);
+}
+
 describe('DELETE /import/batch/:batchId', () => {
   it('deletes every transaction of the batch and restores the account balance', async () => {
     const account = await helpers.createAccount({ raw: true });
@@ -160,28 +186,7 @@ describe('DELETE /import/batch/:batchId', () => {
     });
     const summary = await runCsvImport({ accountId: account.id, currencyCode: 'USD' });
 
-    const { connectionId } = await helpers.bankDataProviders.connectProvider({
-      providerType: BANK_PROVIDER_TYPE.LUNCHFLOW,
-      credentials: { apiKey: VALID_LUNCHFLOW_API_KEY },
-      raw: true,
-    });
-    global.mswMockServer.use(
-      getLunchFlowTransactionsMock({
-        response: getMockedLunchFlowTransactions(0),
-        accountId: LUNCHFLOW_EXTERNAL_ACCOUNT_ID,
-      }),
-      getLunchFlowBalanceMock({
-        accountId: LUNCHFLOW_EXTERNAL_ACCOUNT_ID,
-        response: { balance: { amount: asDecimal(0), currency: 'USD' } },
-      }),
-    );
-    const linkResponse = await helpers.linkAccountToBankConnection({
-      id: account.id,
-      connectionId,
-      externalAccountId: LUNCHFLOW_EXTERNAL_ACCOUNT_ID,
-      raw: false,
-    });
-    expect(linkResponse.statusCode).toBe(200);
+    await linkAccountToLunchFlow({ accountId: account.id });
 
     const response = await helpers.deleteImportBatch({ batchId: summary.batchId });
     expect(response.statusCode).toBe(422);
@@ -343,5 +348,42 @@ describe('background delete for batches above the sync cap', () => {
       expect(accountAfterDelete.currentBalance).toBe(balanceBeforeImport);
     },
     IMPORT_TIMEOUT_MS * 3,
+  );
+
+  it(
+    'rejects an oversized batch on a now bank-linked account immediately instead of queueing it',
+    async () => {
+      await helpers.addUserCurrencies({ currencyCodes: ['USD'], raw: true });
+      const account = await helpers.createAccount({
+        payload: helpers.buildAccountPayload({ currencyCode: 'USD' }),
+        raw: true,
+      });
+      const summary = await runCsvImport({
+        accountId: account.id,
+        currencyCode: 'USD',
+        extraRows: Array.from(
+          { length: OVERSIZED_BATCH_ROWS - 2 },
+          (_, i) => `2024-02-01,${(1 + i * 0.01).toFixed(2)},Row ${i},,A,USD,expense`,
+        ),
+        timeoutMs: IMPORT_TIMEOUT_MS,
+      });
+      expect(summary.newTransactionIds).toHaveLength(OVERSIZED_BATCH_ROWS);
+
+      await linkAccountToLunchFlow({ accountId: account.id });
+
+      const response = await helpers.deleteImportBatch({ batchId: summary.batchId });
+      expect(response.statusCode).toBe(422);
+
+      const status = await helpers.getImportBatchDeleteStatus({ raw: true });
+      expect(status).toEqual({ state: 'idle' });
+
+      const stillThere = await helpers.getTransactions({
+        batchId: summary.batchId,
+        limit: OVERSIZED_BATCH_ROWS,
+        raw: true,
+      });
+      expect(stillThere).toHaveLength(OVERSIZED_BATCH_ROWS);
+    },
+    IMPORT_TIMEOUT_MS * 2,
   );
 });

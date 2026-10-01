@@ -11,12 +11,15 @@ import {
   type endpointsTypes,
 } from '@bt/shared/types';
 import { until } from '@common/helpers';
-import { describe, expect, it } from '@jest/globals';
+import { afterEach, describe, expect, it } from '@jest/globals';
 import Balances from '@models/balances.model';
+import ExchangeRates from '@models/exchange-rates.model';
 import Securities from '@models/investments/securities.model';
 import SecurityPricing from '@models/investments/security-pricing.model';
+import { API_LAYER_BASE_CURRENCY_CODE } from '@services/exchange-rates/constants';
 import * as helpers from '@tests/helpers';
 import { endOfMonth, format, startOfMonth, subMonths } from 'date-fns';
+import { Op } from 'sequelize';
 
 const formatDay = (date: Date) => format(date, 'yyyy-MM-dd');
 
@@ -522,6 +525,132 @@ describe('[Stats] Net worth history', () => {
       expect(point.assets.cash).toBe(0);
       expect(point.assetsTotal).toBe(10000);
       expect(point.netWorth).toBe(10000);
+    });
+
+    describe('currency conversion', () => {
+      const tradeDay = '2025-11-10';
+      const firstRateDay = '2025-12-15';
+      const lastSeededDay = '2025-12-31';
+
+      // ExchangeRates survives per-test truncation, so the base-currency rates this
+      // block seeds (and any that transaction writes persist) must be removed by hand.
+      const clearBaseCurrencyRatesThroughLastSeededDay = () =>
+        ExchangeRates.destroy({
+          where: {
+            baseCode: API_LAYER_BASE_CURRENCY_CODE,
+            quoteCode: global.BASE_CURRENCY.code,
+            date: { [Op.lte]: new Date(`${lastSeededDay}T23:59:59.999Z`) },
+          },
+        });
+
+      afterEach(clearBaseCurrencyRatesThroughLastSeededDay);
+
+      /**
+       * 10 shares of a USD security at a flat $100, with USD->base coverage starting
+       * on `firstRateDay` (4) and moving to 5 on `lastSeededDay`. Flat price, so only
+       * the rate differs between snapshot days.
+       */
+      const seedUsdHoldingWithLateRateCoverage = async () => {
+        const portfolio = await helpers.createPortfolio({ raw: true });
+        const usdSecurity = await Securities.create({
+          symbol: 'AAPL',
+          providerSymbol: 'AAPL',
+          currencyCode: 'USD',
+          providerName: SECURITY_PROVIDER.fmp,
+          assetClass: ASSET_CLASS.stocks,
+          name: 'Apple Inc.',
+        });
+        await seedHolding({ portfolioId: portfolio.id, securityId: usdSecurity.id });
+
+        // The writes below convert USD into the base currency on the trade day, so a
+        // rate must exist for it. It is wiped before the report runs.
+        await ExchangeRates.bulkCreate(
+          [
+            {
+              baseCode: API_LAYER_BASE_CURRENCY_CODE,
+              quoteCode: global.BASE_CURRENCY.code,
+              rate: 1,
+              date: new Date(`${tradeDay}T00:00:00.000Z`),
+            },
+          ],
+          { ignoreDuplicates: true },
+        );
+
+        // Fund the buy in its own settlement currency so USD cash nets to zero and
+        // `assets.investments` is the holding alone.
+        await helpers.directCashTransaction({
+          portfolioId: portfolio.id,
+          payload: { type: 'deposit', amount: '1000', currencyCode: 'USD', date: tradeDay },
+          raw: true,
+        });
+        await helpers.createInvestmentTransaction({
+          payload: {
+            portfolioId: portfolio.id,
+            securityId: usdSecurity.id,
+            category: INVESTMENT_TRANSACTION_CATEGORY.buy,
+            date: tradeDay,
+            quantity: '10',
+            price: '100',
+            fees: '0',
+          },
+          raw: true,
+        });
+
+        await setPrice({ securityId: usdSecurity.id, date: '2025-11-30', price: '100' });
+        await setPrice({ securityId: usdSecurity.id, date: lastSeededDay, price: '100' });
+
+        await clearBaseCurrencyRatesThroughLastSeededDay();
+        await ExchangeRates.bulkCreate([
+          {
+            baseCode: API_LAYER_BASE_CURRENCY_CODE,
+            quoteCode: global.BASE_CURRENCY.code,
+            rate: 4,
+            date: new Date(`${firstRateDay}T00:00:00.000Z`),
+          },
+          {
+            baseCode: API_LAYER_BASE_CURRENCY_CODE,
+            quoteCode: global.BASE_CURRENCY.code,
+            rate: 5,
+            date: new Date(`${lastSeededDay}T00:00:00.000Z`),
+          },
+        ]);
+      };
+
+      it('converts a snapshot dated before the first stored rate at that first rate and still reports the currency as degraded', async () => {
+        await seedUsdHoldingWithLateRateCoverage();
+
+        const result = await helpers.getNetWorthHistory({
+          from: '2025-11-01',
+          to: '2025-12-31',
+          granularity: 'monthly',
+          raw: true,
+        });
+
+        expect(result.points).toHaveLength(2);
+        // Nov 30 predates every stored rate: 10 x $100 at the first rate (4), not 1:1 (1,000).
+        expect(result.points[0]!.assets.investments).toBe(4000);
+        // Dec 31 has its own rate: 10 x $100 x 5.
+        expect(result.points[1]!.assets.investments).toBe(5000);
+        expect(result.degraded).toEqual({ fxFallbackCurrencies: ['USD'] });
+      }, 60_000);
+
+      it('converts a window that ends before the first stored rate at that first rate and still reports the currency as degraded', async () => {
+        await seedUsdHoldingWithLateRateCoverage();
+
+        // The whole window, including the week of rate lookback before it, predates
+        // `firstRateDay`, so no rate is stored on or before any snapshot day.
+        const result = await helpers.getNetWorthHistory({
+          from: '2025-11-01',
+          to: '2025-11-30',
+          granularity: 'monthly',
+          raw: true,
+        });
+
+        expect(result.points).toHaveLength(1);
+        // 10 x $100 at the first stored rate (4), not 1:1 (1,000).
+        expect(result.points[0]!.assets.investments).toBe(4000);
+        expect(result.degraded).toEqual({ fxFallbackCurrencies: ['USD'] });
+      }, 60_000);
     });
   });
 });

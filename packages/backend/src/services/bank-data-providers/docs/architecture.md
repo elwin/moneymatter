@@ -610,6 +610,7 @@ bank-data-providers/
 | `/connections/:id/available-accounts`     | GET    | List accounts for selection                 |
 | `/connections/:id/sync-selected-accounts` | POST   | Create accounts + sync                      |
 | `/connections/:id/sync-transactions`      | POST   | Sync single account                         |
+| `/connections/:id/sync`                   | POST   | Queue sync for the connection's accounts    |
 | `/connections/:id/reconcile-duplicates`   | POST   | Collapse pre-existing duplicate pairs       |
 | `/sync/trigger`                           | POST   | Trigger full sync                           |
 | `/sync/status`                            | GET    | Get all sync statuses                       |

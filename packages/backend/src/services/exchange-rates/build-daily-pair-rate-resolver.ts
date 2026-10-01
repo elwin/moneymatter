@@ -21,8 +21,8 @@ export type DailyPairRateResolver = (dayKey: string) => number | null;
  * Per-day `baseCode → quoteCode` rate from the USD-pivot rows: exact day, else the
  * most recent earlier day, else the earliest day known for that currency.
  *
- * Returns `null` when either leg has no stored rate at all, and the resolver returns
- * `null` for a day neither leg covers.
+ * Returns `null` when either leg has no stored rate dated on or before `to`. The
+ * resolver returns `null` only for a day whose rate is zero or truncates to zero.
  */
 export const buildDailyPairRateResolver = async ({
   baseCode,
@@ -63,28 +63,25 @@ export const buildDailyPairRateResolver = async ({
   });
   const findLatestUsdRate = createFindLatestUsdRate({ usdRatesMap, usdRateDatesByQuote });
 
-  const hasAnyRate = (code: string) =>
-    code === API_LAYER_BASE_CURRENCY_CODE || (usdRateDatesByQuote.get(code)?.length ?? 0) > 0;
-
-  if (!hasAnyRate(baseCode) || !hasAnyRate(quoteCode)) return null;
-
-  const findUsdRate = (code: string, dayKey: string): number | null => {
-    const latest = findLatestUsdRate(code, dayKey);
-    if (latest !== null) return latest;
-
-    // Days before the first stored rate borrow it: any rate beats no rate.
+  // A leg whose only rate is dated after the window counts as uncovered, so callers
+  // resolve each row's own date instead of writing one borrowed rate to every row.
+  const lastDayKey = toDayKey(to);
+  const hasRateInRange = (code: string) => {
+    if (code === API_LAYER_BASE_CURRENCY_CODE) return true;
     const earliest = usdRateDatesByQuote.get(code)?.[0];
-    return earliest ? (usdRatesMap.get(`${code}_${earliest}`) ?? null) : null;
+    return earliest !== undefined && earliest <= lastDayKey;
   };
 
+  if (!hasRateInRange(baseCode) || !hasRateInRange(quoteCode)) return null;
+
   return (dayKey: string) => {
-    const usdToBase = findUsdRate(baseCode, dayKey);
-    const usdToQuote = findUsdRate(quoteCode, dayKey);
-    if (usdToBase == null || usdToQuote == null || usdToBase === 0) return null;
+    const usdToBase = findLatestUsdRate(baseCode, dayKey);
+    const usdToQuote = findLatestUsdRate(quoteCode, dayKey);
+    if (!usdToBase || !usdToQuote || usdToBase.rate === 0) return null;
 
     // Truncation to 5 decimals collapses a sub-0.00001 rate to 0, and a zero rate
     // would be written as a valid history of zero balances.
-    const rate = formatRate(usdToQuote / usdToBase);
+    const rate = formatRate(usdToQuote.rate / usdToBase.rate);
     return rate > 0 ? rate : null;
   };
 };

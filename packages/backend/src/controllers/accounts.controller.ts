@@ -110,6 +110,7 @@ export const updateAccount = createController(
         status: z.nativeEnum(ACCOUNT_STATUSES).optional(),
         excludeFromStats: z.boolean().optional(),
         currentBalance: z.number().optional(),
+        initialBalance: z.number().optional(),
         // Absent key → no change; a present key is written as given (null clears
         // it), and a brand domain and monogram letters evict each other.
         ...logoFieldsShape,
@@ -126,6 +127,7 @@ export const updateAccount = createController(
       status,
       excludeFromStats,
       currentBalance,
+      initialBalance,
       logoDomain,
       logoInitials,
       logoColor,
@@ -172,6 +174,7 @@ export const updateAccount = createController(
         excludeFromStats,
         accountCategory,
         currentBalance: currentBalance !== undefined ? Money.fromDecimal(currentBalance) : undefined,
+        initialBalance: initialBalance !== undefined ? Money.fromDecimal(initialBalance) : undefined,
         name,
         creditLimit: creditLimit !== undefined ? Money.fromDecimal(creditLimit) : undefined,
         logoDomain,

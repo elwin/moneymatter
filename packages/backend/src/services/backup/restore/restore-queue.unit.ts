@@ -14,6 +14,7 @@ jest.mock('@services/import-export/core/queue/create-import-job-queue', () => ({
     queue: { getJob: jest.fn(), getJobs: jest.fn() },
     worker: {},
     enqueue: jest.fn(),
+    describeFailure: jest.fn(),
   })),
 }));
 
@@ -25,7 +26,6 @@ jest.mock('@root/redis-client', () => ({
   REDIS_KEY_PREFIX: undefined,
 }));
 
-// Only reached inside the worker body, which these unit tests never execute.
 // Stub to keep the import graph off the DB / base-currency-lock machinery.
 jest.mock('./restore-backup.service', () => ({ __esModule: true, restoreUserBackup: jest.fn() }));
 jest.mock('@services/currencies/base-currency-lock', () => ({
@@ -38,31 +38,52 @@ jest.mock('@i18n/index', () => ({ __esModule: true, t: jest.fn(() => 'translated
 
 /* eslint-disable import/first */
 import { redisClient } from '@root/redis-client';
+import { acquireBaseCurrencyLock, releaseBaseCurrencyLockIfOwned } from '@services/currencies/base-currency-lock';
 import { createImportJobQueue } from '@services/import-export/core/queue/create-import-job-queue';
 
-import { queueBackupRestore } from './restore-queue';
+import { restoreUserBackup } from './restore-backup.service';
+import { getBackupRestoreStatus, queueBackupRestore } from './restore-queue';
 /* eslint-enable import/first */
 
 type AsyncMock = jest.Mock<(...args: never[]) => Promise<unknown>>;
 
-// The queue + enqueue the module under test received from the (mocked) factory at
-// load time. Captured once here (not per-test) so `clearAllMocks` — which wipes
-// `mock.results` — can't strand the references.
+// What the module under test passed to and received from the (mocked) factory at
+// load time. Captured once here (not per-test) so `resetAllMocks`, which wipes
+// `mock.calls` and `mock.results`, can't strand the references.
+const factoryParams = jest.mocked(createImportJobQueue).mock.calls[0]![0] as unknown as {
+  interruptedMessageKey: string;
+  processJob: (params: { job: { id: string; data: { userId: number; fileContent: string } } }) => Promise<unknown>;
+};
 const factoryBundle = jest.mocked(createImportJobQueue).mock.results[0]!.value as unknown as {
   queue: { getJob: AsyncMock; getJobs: AsyncMock };
   enqueue: AsyncMock;
+  describeFailure: jest.Mock<(params: { reason: string | undefined }) => string | undefined>;
 };
+const getJobMock = factoryBundle.queue.getJob;
 const getJobsMock = factoryBundle.queue.getJobs;
 const enqueueMock = factoryBundle.enqueue;
+const describeFailureMock = factoryBundle.describeFailure;
 const redisSetMock = jest.mocked(redisClient.set) as unknown as AsyncMock;
+const acquireLockMock = jest.mocked(acquireBaseCurrencyLock);
+const releaseLockMock = jest.mocked(releaseBaseCurrencyLockIfOwned);
+const restoreUserBackupMock = jest.mocked(restoreUserBackup) as unknown as AsyncMock;
 
 const USER_ID = 42;
 const FILE_CONTENT = 'base64-encoded-backup-zip';
+const STALLED_REASON = 'job stalled more than allowable limit';
+
+const buildJob = ({ state, failedReason }: { state: string; failedReason?: string }) => ({
+  data: { userId: USER_ID },
+  progress: undefined,
+  failedReason,
+  getState: async () => state,
+});
 
 beforeEach(() => {
-  jest.clearAllMocks();
+  jest.resetAllMocks();
   redisSetMock.mockResolvedValue('OK');
   enqueueMock.mockResolvedValue(undefined);
+  releaseLockMock.mockResolvedValue(undefined);
 });
 
 describe('queueBackupRestore concurrent-restore enqueue guard', () => {
@@ -110,5 +131,62 @@ describe('queueBackupRestore concurrent-restore enqueue guard', () => {
 
     expect(jobId).toMatch(new RegExp(`^backup-restore-${USER_ID}-`));
     expect(enqueueMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('getBackupRestoreStatus', () => {
+  it('reports a stalled job with the queue-mapped failure message and releases its orphaned lock', async () => {
+    const jobId = `backup-restore-${USER_ID}-stalled`;
+    getJobMock.mockResolvedValue(buildJob({ state: 'failed', failedReason: STALLED_REASON }));
+    describeFailureMock.mockReturnValue('interrupted message');
+
+    const status = await getBackupRestoreStatus({ userId: USER_ID, jobId });
+
+    expect(describeFailureMock).toHaveBeenCalledWith({ reason: STALLED_REASON });
+    expect(status).toEqual({ jobId, status: 'failed', progress: undefined, error: 'interrupted message' });
+    expect(releaseLockMock).toHaveBeenCalledWith({ userId: USER_ID, jobId });
+  });
+
+  it('builds its queue with the interrupted message of a job that rolls back as a whole', () => {
+    expect(factoryParams.interruptedMessageKey).toBe('common.jobInterruptedByServerUpdate');
+  });
+
+  it('reports an active job as processing and keeps its lock', async () => {
+    const jobId = `backup-restore-${USER_ID}-active`;
+    getJobMock.mockResolvedValue(buildJob({ state: 'active' }));
+
+    const status = await getBackupRestoreStatus({ userId: USER_ID, jobId });
+
+    expect(status).toEqual({ jobId, status: 'processing', progress: undefined });
+    expect(releaseLockMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps the lock of a failed job while its processor still runs in this process', async () => {
+    const jobId = `backup-restore-${USER_ID}-live`;
+    getJobMock.mockResolvedValue(buildJob({ state: 'failed', failedReason: STALLED_REASON }));
+    acquireLockMock.mockResolvedValue(true);
+    let finishRestore!: () => void;
+    restoreUserBackupMock.mockReturnValue(
+      new Promise((resolve) => {
+        finishRestore = () => resolve(undefined);
+      }),
+    );
+
+    const processing = factoryParams.processJob({
+      job: { id: jobId, data: { userId: USER_ID, fileContent: FILE_CONTENT } },
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+
+    const status = await getBackupRestoreStatus({ userId: USER_ID, jobId });
+
+    expect(status?.status).toBe('failed');
+    expect(releaseLockMock).not.toHaveBeenCalled();
+
+    finishRestore();
+    await processing;
+    releaseLockMock.mockClear();
+    await getBackupRestoreStatus({ userId: USER_ID, jobId });
+
+    expect(releaseLockMock).toHaveBeenCalledWith({ userId: USER_ID, jobId });
   });
 });

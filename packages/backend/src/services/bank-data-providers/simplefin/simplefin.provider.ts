@@ -29,7 +29,7 @@ import { accountHasPlannedRows } from '@services/transactions/planned-matching';
 import { subDays } from 'date-fns';
 import { Op, Sequelize } from 'sequelize';
 
-import { SyncStatus, setAccountSyncStatus } from '../sync/sync-status-tracker';
+import { SyncStatus, setAccountSyncStatus, setAccountsSyncStatus } from '../sync/sync-status-tracker';
 import { clampSyncStartToLink } from '../utils/clamp-sync-start-to-link';
 import { encryptCredentials } from '../utils/credential-encryption';
 import { linkAndEmitSyncedTransactions } from '../utils/link-and-emit-synced-transactions';
@@ -65,7 +65,6 @@ const MAX_WINDOW_MS = 44 * 24 * 60 * 60 * 1000;
  * older history on demand via the "load transactions for period" picker.
  */
 const INITIAL_BACKFILL_DAYS = 180;
-const SIMPLEFIN_EXPECTED_AUTH_CODES = new Set(['gen.auth', 'con.auth']);
 
 /** Per-account slice of a batched windowed `/accounts` fetch. */
 interface AccountTransactionsBucket {
@@ -367,9 +366,8 @@ export class SimplefinProvider extends BaseBankDataProvider {
     });
     if (accounts.length === 0) return;
 
-    await Promise.all(
-      accounts.map((account) => setAccountSyncStatus({ accountId: account.id, status: SyncStatus.SYNCING, userId })),
-    );
+    const accountIds = accounts.map((account) => account.id);
+    await setAccountsSyncStatus({ accountIds, status: SyncStatus.SYNCING, userId });
 
     const { accessUrl } = await this.getValidatedCredentials(connectionId);
     const apiClient = new SimplefinApiClient(accessUrl);
@@ -400,11 +398,7 @@ export class SimplefinProvider extends BaseBankDataProvider {
       // Fetch-level failure (auth/rate-limit/outage): no account got data, so
       // fail them all with the same message and rethrow for the caller's logger.
       const message = error instanceof Error ? error.message : 'Unknown error';
-      await Promise.all(
-        accounts.map((account) =>
-          setAccountSyncStatus({ accountId: account.id, status: SyncStatus.FAILED, error: message, userId }),
-        ),
-      );
+      await setAccountsSyncStatus({ accountIds, status: SyncStatus.FAILED, error: message, userId });
       throw error;
     }
 
@@ -945,13 +939,19 @@ export class SimplefinProvider extends BaseBankDataProvider {
     const legacy = accountSet.errors ?? [];
 
     for (const err of structured) {
-      // gen.auth is re-link churn already surfaced by the ForbiddenError; con.auth is the
-      // user's bank asking them to re-authenticate. Neither is an app fault, so both stay out of Sentry.
-      const log = SIMPLEFIN_EXPECTED_AUTH_CODES.has(err.code) ? logger.info : logger.warn;
-      log(`[SimpleFIN] Bridge error ${err.code}: ${err.msg}`);
+      // act.*/con.* are per-institution conditions and gen.auth is surfaced by the ForbiddenError,
+      // so none are app faults. Other codes keep a fixed warn message so Sentry groups them per code.
+      if (err.code === 'gen.auth' || err.code.startsWith('act.') || err.code.startsWith('con.')) {
+        logger.info(`[SimpleFIN] Bridge error ${err.code}: ${err.msg}`);
+      } else {
+        logger.warn(`[SimpleFIN] Bridge error ${err.code}`, { bridgeMessage: err.msg });
+      }
     }
-    for (const msg of legacy) {
-      logger.warn(`[SimpleFIN] Bridge warning: ${msg}`);
+    // v2 bridges repeat every errlist entry as a legacy `errors` string.
+    if (structured.length === 0) {
+      for (const msg of legacy) {
+        logger.warn(`[SimpleFIN] Bridge warning: ${msg}`);
+      }
     }
 
     const authErrors = structured.filter((e) => e.code === 'gen.auth');

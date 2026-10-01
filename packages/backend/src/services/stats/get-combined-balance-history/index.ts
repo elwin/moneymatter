@@ -240,12 +240,14 @@ const calculatePortfolioBalanceHistory = async ({
   });
 
   const missingRateCurrencies = new Set<string>();
+  const approximatedRateCurrencies = new Set<string>();
   const findLatestUsdRate = createFindLatestUsdRate({ usdRatesMap, usdRateDatesByQuote });
   const getExchangeRate = createGetExchangeRate({
     userBaseCurrencyCode: userBaseCurrency.currencyCode,
     userRatesMap,
     findLatestUsdRate,
-    onMissingRate: (code) => missingRateCurrencies.add(code),
+    onMissingRate: ({ currencyCode, approximated }) =>
+      (approximated ? approximatedRateCurrencies : missingRateCurrencies).add(currencyCode),
   });
 
   const transactionsByPortfolio = Map.groupBy(transactions, (tx) => tx.portfolioId);
@@ -303,6 +305,17 @@ const calculatePortfolioBalanceHistory = async ({
       userId,
       baseCurrency: userBaseCurrency.currencyCode,
       currencies: Array.from(missingRateCurrencies),
+      dateRange: { from: minDate, to: maxDate },
+    });
+  }
+
+  // Info-only: a range reaching back past a currency's first stored rate is
+  // approximated on every request, so an error here would repeat forever.
+  if (approximatedRateCurrencies.size > 0) {
+    logger.info('Combined balance history converted days before the first stored exchange rate at that rate', {
+      userId,
+      baseCurrency: userBaseCurrency.currencyCode,
+      currencies: Array.from(approximatedRateCurrencies),
       dateRange: { from: minDate, to: maxDate },
     });
   }

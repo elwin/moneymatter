@@ -156,10 +156,13 @@ export function isTemporaryError({ error }: { error: unknown }): boolean {
 export function isAuthError({ error }: { error: unknown }): boolean {
   if (error instanceof APICallError) {
     const status = error.statusCode;
-    if (status === 401 || status === 403) return true;
+    if (status === 401 || status === 402 || status === 403) return true;
 
-    // Gemini answers a bad key with a 400 carrying `API_KEY_INVALID`
     const text = `${error.message} ${error.responseBody ?? ''}`.toLowerCase();
+    // Billing refusals (DeepInfra: "please enter a payment method") don't use a consistent status,
+    // but a 429 asking to add a payment method for a higher limit is still a rate limit.
+    if (status !== 429 && text.includes('payment method')) return true;
+    // Gemini answers a bad key with a 400 carrying `API_KEY_INVALID`
     return status === 400 && (text.includes('api_key_invalid') || text.includes('api key not valid'));
   }
   if (error instanceof Error) {

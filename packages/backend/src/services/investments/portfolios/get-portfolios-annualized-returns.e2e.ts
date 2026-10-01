@@ -362,6 +362,67 @@ describe('GET /investments/portfolios/annualized-returns', () => {
       expect(entry.currencyCode).toBe(global.BASE_CURRENCY_CODE);
     });
 
+    it('converts a buy dated before the first stored rate at that rate, not 1:1', async () => {
+      // Taken before the fixture so a rate row written while creating the buy is deleted
+      // in `finally`, not restored.
+      const usdToBaseWhere = { baseCode: API_LAYER_BASE_CURRENCY_CODE, quoteCode: 'AED' };
+      const storedRates = (await ExchangeRates.findAll({ where: usdToBaseWhere, raw: true })).map(
+        ({ baseCode, quoteCode, date, rate, source }) => ({ baseCode, quoteCode, date, rate, source }),
+      );
+
+      try {
+        const startDate = daysAgo({ days: 365 });
+
+        const security = await Securities.create({
+          symbol: 'USDLATE',
+          providerSymbol: 'USDLATE',
+          currencyCode: 'USD',
+          providerName: SECURITY_PROVIDER.fmp,
+          assetClass: ASSET_CLASS.stocks,
+          name: 'USD Late Rate Test Security',
+        });
+
+        await helpers.createHolding({ payload: { portfolioId: portfolio.id, securityId: security.id } });
+        await helpers.createInvestmentTransaction({
+          payload: {
+            portfolioId: portfolio.id,
+            securityId: security.id,
+            category: INVESTMENT_TRANSACTION_CATEGORY.buy,
+            date: startDate,
+            quantity: '1',
+            price: '100',
+          },
+          raw: true,
+        });
+        await seedPrices({
+          securityId: security.id,
+          points: [
+            { date: startDate, price: '100' },
+            { date: today(), price: '120' },
+          ],
+        });
+
+        // A USD→AED rate on or before the buy would give the start boundary a real rate,
+        // and any other rate between the buy and today would replace the one seeded here
+        // as the earliest. Today's rate must be the only one.
+        await ExchangeRates.destroy({ where: usdToBaseWhere });
+        await UserExchangeRates.destroy({ where: { userId: 1, baseCode: 'USD', quoteCode: 'AED' } });
+        await ExchangeRates.create({ ...usdToBaseWhere, rate: 4, date: parseISO(today()) });
+
+        const result = await helpers.getPortfoliosAnnualizedReturns({ raw: true });
+        const entry = result.find((r) => r.portfolioId === portfolio.id)!;
+
+        expect(entry.hasEnoughHistory).toBe(true);
+        expect(entry.periodDays).toBe(365);
+        // Both boundaries convert at 4: 1 * $100 * 4 = 400 AED → 1 * $120 * 4 = 480 AED,
+        // a 1.2 factor over 365 days = +20%/yr. A 1:1 start value of 100 AED gives 380%/yr.
+        expect(entry.annualizedReturn).toBeCloseTo(20, 0);
+      } finally {
+        await ExchangeRates.destroy({ where: usdToBaseWhere });
+        await ExchangeRates.bulkCreate(storedRates, { ignoreDuplicates: true });
+      }
+    });
+
     it('does not inflate the return when a holding is unpriced at its buy date', async () => {
       // Reproduces the real-world case: a security whose price history does not
       // reach back to the (back-dated) buy. The unpriced holding must fall back

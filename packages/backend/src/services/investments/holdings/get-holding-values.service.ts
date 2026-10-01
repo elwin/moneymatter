@@ -60,6 +60,8 @@ interface HoldingValue {
   displayMarketValue?: string;
   displayUnrealizedGainValue?: string;
   displayRealizedGainValue?: string;
+  // Internal: holding→base rate already resolved here; not part of the holdings API response
+  baseRate?: number;
 }
 
 /**
@@ -242,6 +244,7 @@ const getHoldingValuesImpl = async ({ portfolioId, date, userId }: GetHoldingVal
     let refMarketValue = '0';
     let latestPrice: string | undefined;
     let priceDate: Date | undefined;
+    let baseRate: number | null = null;
 
     if (price) {
       latestPrice = price.priceClose.toDecimalString(INVESTMENT_DECIMAL_SCALE);
@@ -250,7 +253,7 @@ const getHoldingValuesImpl = async ({ portfolioId, date, userId }: GetHoldingVal
       marketValue = quantity.times(priceClose).toFixed(10);
 
       if (parseFloat(marketValue) > 0) {
-        const baseRate = await getBaseRate(holding.currencyCode);
+        baseRate = await getBaseRate(holding.currencyCode);
         if (baseRate !== null) {
           refMarketValue = calculateRefAmountFromParams({
             amount: Money.fromDecimal(marketValue),
@@ -289,6 +292,7 @@ const getHoldingValuesImpl = async ({ portfolioId, date, userId }: GetHoldingVal
       unrealizedGainPercent: gains.unrealizedGainPercent.toFixed(2),
       realizedGainValue: gains.realizedGainValue.toFixed(2),
       realizedGainPercent: gains.realizedGainPercent.toFixed(2),
+      ...(baseRate !== null && { baseRate }),
       ...(displayRate !== null && {
         displayCurrencyCode,
         displayCostBasis: toDisplay({

@@ -7,6 +7,8 @@ import { sseManager } from '@services/common/sse';
 import { isBaseCurrencyChangeLocked } from '@services/currencies/base-currency-lock';
 import { Job, Queue, Worker } from 'bullmq';
 
+import { isStalledPastLimitFailure } from './stalled-job-failure';
+
 /**
  * Shared BullMQ + SSE scaffold for the file-import queues (Wallet, YNAB). Each
  * importer enqueues a single user-triggered job that writes rows in the
@@ -109,6 +111,10 @@ interface CreateImportJobQueueParams<
   /** Importer body: parse + write rows, ticking `onProgress` per committed row.
    *  Resolves to the summary the worker stores as the job result. */
   processJob: (params: { job: Job<TJobData>; onProgress: ImportProgressCallback }) => Promise<TSummary>;
+  /** i18n key of the error shown when a server restart kills the job mid-run.
+   *  The default tells the user to undo the partial import before retrying, so a
+   *  job that rolls back as a whole must pass its own key. */
+  interruptedMessageKey?: string;
 }
 
 interface ImportJobQueueBundle<TJobData extends SentryTraceData, TSummary, TProgress extends SSEEventPayload> {
@@ -127,6 +133,9 @@ interface ImportJobQueueBundle<TJobData extends SentryTraceData, TSummary, TProg
   /** Fallback polling path: build the current `TProgress` for a job, scoped to its
    *  owner. Returns `null` when the job is missing or belongs to another user. */
   getImportProgress: (params: { userId: number; jobId: string }) => Promise<TProgress | null>;
+  /** Map BullMQ's stalled-job `failedReason` to the translated interrupted
+   *  message. Any other reason, an empty one included, passes through unchanged. */
+  describeFailure: <TReason extends string | undefined>(params: { reason: TReason }) => TReason | string;
 }
 
 /** ioredis raises a bare `new Error('Connection is closed.')` (no `code`) when a
@@ -168,6 +177,7 @@ export function createImportJobQueue<
   sseEventType,
   logLabel,
   processJob,
+  interruptedMessageKey = 'importExport.importInterruptedByServerUpdate',
   buildRunningPayload: providedBuildRunningPayload,
   buildCompletedPayload: providedBuildCompletedPayload,
   buildFailedPayload: providedBuildFailedPayload,
@@ -290,15 +300,31 @@ export function createImportJobQueue<
     });
   });
 
+  const describeFailure = <TReason extends string | undefined>({ reason }: { reason: TReason }): TReason | string =>
+    isStalledPastLimitFailure({ reason }) ? t({ key: interruptedMessageKey }) : reason;
+
   worker.on('failed', (job, err) => {
-    logger.error({ message: `[${logLabel} Worker] Job ${job?.id} failed`, error: err });
+    // Every deploy that restarts the process mid-job ends here, so it is not an error.
+    if (isStalledPastLimitFailure({ reason: err.message })) {
+      logger.warn(`[${logLabel} Worker] Job failed as stalled: its worker died or lost the job lock`, {
+        jobId: job?.id,
+        userId: job?.data.userId,
+      });
+    } else {
+      logger.error({ message: `[${logLabel} Worker] Job ${job?.id} failed`, error: err });
+    }
     if (!job) return;
     // Report the partial progress reached before the crash so the user can see
     // how many rows actually landed instead of a misleading "0 / 0 failed".
     const { processedCount, totalCount } = readJobProgress(job);
     sendProgress({
       userId: job.data.userId,
-      payload: buildFailedPayload({ jobId: job.id!, processedCount, totalCount, error: err.message }),
+      payload: buildFailedPayload({
+        jobId: job.id!,
+        processedCount,
+        totalCount,
+        error: describeFailure({ reason: err.message }),
+      }),
     });
   });
 
@@ -376,7 +402,7 @@ export function createImportJobQueue<
         jobId,
         processedCount,
         totalCount,
-        error: settled.failedReason || 'Unknown error',
+        error: describeFailure({ reason: settled.failedReason || 'Unknown error' }),
       });
     }
     if (state === 'waiting' || state === 'delayed') {
@@ -390,5 +416,5 @@ export function createImportJobQueue<
     return buildRunningPayload({ jobId, processedCount, totalCount });
   }
 
-  return { queue, worker, queueName, sendProgress, readJobProgress, enqueue, getImportProgress };
+  return { queue, worker, queueName, sendProgress, readJobProgress, enqueue, getImportProgress, describeFailure };
 }

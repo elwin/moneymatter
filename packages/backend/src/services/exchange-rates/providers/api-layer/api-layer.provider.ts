@@ -198,6 +198,16 @@ export class ApiLayerProvider extends BaseExchangeRateProvider {
     const statusCode = error.response?.status;
     const params = { date, apiKeyIndex: keyIndex + 1, totalKeys };
 
+    // No response (timeout, network) is unrelated to the key, so rotating would repeat the same failure per key.
+    if (!error.response) {
+      this.logError(error.code === 'ECONNABORTED' ? 'Request timeout' : 'Network error', {
+        ...params,
+        code: error.code,
+        errorMessage: error.message,
+      });
+      return false;
+    }
+
     if (statusCode === 429) {
       // Rate limited - mark key and try next
       await ApiKeyRateLimitService.markAsRateLimited('apilayer', apiKey, 'HTTP 429 Too Many Requests');
@@ -223,16 +233,6 @@ export class ApiLayerProvider extends BaseExchangeRateProvider {
     if (statusCode && statusCode >= 500) {
       this.logError(`Server error (${statusCode})`, params);
       return true; // Try next key
-    }
-
-    if (error.code === 'ECONNABORTED') {
-      this.logError('Request timeout', params);
-      return true; // Try next key
-    }
-
-    if (error.code === 'ECONNREFUSED') {
-      this.logError('Connection refused', params);
-      return false; // Abort - service unreachable
     }
 
     this.logError('Unhandled error', {

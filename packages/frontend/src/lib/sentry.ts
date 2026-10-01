@@ -86,6 +86,9 @@ export function initSentry({ app, router }: { app: App; router: Router }): void 
       // Browser extensions
       /^chrome-extension:\/\//,
       /^moz-extension:\/\//,
+      // Safari WebExtension runtime errors arrive as stackless rejections, so allowUrls cannot drop them.
+      // Fixes MONEY-MATTER-CLIENT-18
+      /Invalid call to runtime\.\w+\(\)/,
       // ResizeObserver (harmless)
       'ResizeObserver loop limit exceeded',
       'ResizeObserver loop completed with undelivered notifications',
@@ -110,9 +113,10 @@ export function initSentry({ app, router }: { app: App; router: Router }): void 
       // (browser translation extensions, injected widgets) editing nodes Vue
       // owns. The stack is entirely Vue-internal with no app frame, so there is
       // nothing to fix in app code — only the environment differs.
-      // Fixes MONEY-MATTER-CLIENT-X + MONEY-MATTER-CLIENT-11 + MONEY-MATTER-CLIENT-Z + MONEY-MATTER-CLIENT-Y
+      // Fixes MONEY-MATTER-CLIENT-X + MONEY-MATTER-CLIENT-11 + MONEY-MATTER-CLIENT-Z + MONEY-MATTER-CLIENT-Y + MONEY-MATTER-CLIENT-1X
       /Failed to execute 'insertBefore' on 'Node'/,
-      /Cannot read properties of null \(reading 'parentNode'\)/,
+      /Cannot read properties of null \(reading '(parentNode|nextSibling)'\)/,
+      /can't access property "(parentNode|nextSibling)", [\w$]+ is null/,
       /Cannot destructure property 'bum'/,
       // TanStack cancels in-flight queries on purpose when the boot watchdog resets
       // the cache; the rejection reaching a top-level await is not a bug.
@@ -121,6 +125,9 @@ export function initSentry({ app, router }: { app: App; router: Router }): void 
       // A bare `reject()`/`reject(null)` carries no stack, so nothing can be acted on.
       // Fixes MONEY-MATTER-CLIENT-15
       /Non-Error promise rejection captured with value: (null|undefined)/,
+      // Synthetic `new CustomEvent('unhandledrejection')` dispatched by injected scripts; the app never dispatches one.
+      // Fixes MONEY-MATTER-CLIENT-1S
+      /Event `CustomEvent` \(type=unhandledrejection\) captured as promise rejection/,
       // Stale i18n JSON chunk after a deploy — same class as the dynamic-import
       // patterns above; the page reload from chunk-reload-handler clears it.
       // Fixes MONEY-MATTER-CLIENT-1P + MONEY-MATTER-CLIENT-1Q + MONEY-MATTER-CLIENT-1F

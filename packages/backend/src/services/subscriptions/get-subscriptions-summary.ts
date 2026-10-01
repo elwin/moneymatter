@@ -4,10 +4,11 @@ import { t } from '@i18n/index';
 import { CustomError, ValidationError } from '@js/errors';
 import { logger } from '@js/utils/logger';
 import Subscriptions from '@models/subscriptions.model';
-import { calculateRefAmount } from '@services/calculate-ref-amount.service';
+import { calculateRefAmountFromParams } from '@services/calculate-ref-amount.service';
 import { withTransaction } from '@services/common/with-transaction';
 import { ensureUserBaseCurrency } from '@services/currencies/ensure-base-currency.service';
 import { statsTransactions } from '@services/stats/stats-transactions';
+import * as userExchangeRateService from '@services/user-exchange-rate';
 import { endOfMonth, startOfMonth, subMonths } from 'date-fns';
 import { Op } from 'sequelize';
 
@@ -93,6 +94,11 @@ const getSubscriptionsSummaryImpl = async ({
   let activeIncomeCount = 0;
   const unconnectedCurrencies = new Set<string>();
 
+  // One rate lookup per distinct currency: every lookup queries the user's
+  // currency connection before any cache, so a per-subscription call is an N+1.
+  const now = new Date();
+  const baseRates = new Map<string, number>();
+
   for (const sub of subscriptions) {
     const isIncome = sub.transactionType === TRANSACTION_TYPES.income;
     if (isIncome) {
@@ -102,13 +108,18 @@ const getSubscriptionsSummaryImpl = async ({
     }
 
     try {
-      const refAmount = await calculateRefAmount({
-        amount: sub.expectedAmount!,
-        userId,
-        date: new Date(),
-        baseCode: sub.expectedCurrencyCode!,
-        quoteCode: baseCurrencyCode,
-      });
+      const currencyCode = sub.expectedCurrencyCode!;
+      let rate = baseRates.get(currencyCode);
+      if (rate === undefined) {
+        ({ rate } = await userExchangeRateService.getExchangeRate({
+          userId,
+          date: now,
+          baseCode: currencyCode,
+          quoteCode: baseCurrencyCode,
+        }));
+        baseRates.set(currencyCode, rate);
+      }
+      const refAmount = calculateRefAmountFromParams({ amount: sub.expectedAmount!, rate });
 
       const multiplier = MONTHLY_MULTIPLIERS[sub.frequency] ?? 1;
       const monthlyAmount = refAmount.multiply(multiplier);
@@ -125,7 +136,10 @@ const getSubscriptionsSummaryImpl = async ({
       if (e instanceof CustomError && e.code === API_ERROR_CODES.currencyNotConnected && sub.expectedCurrencyCode) {
         unconnectedCurrencies.add(sub.expectedCurrencyCode);
       } else {
-        logger.warn(`Skipping subscription ${sub.id} in summary: currency conversion failed`);
+        logger.warn(`Skipping subscription ${sub.id} in summary: currency conversion failed`, {
+          currencyCode: sub.expectedCurrencyCode,
+          error: e,
+        });
       }
     }
   }

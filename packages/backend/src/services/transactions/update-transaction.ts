@@ -1,4 +1,4 @@
-import { ACCOUNT_TYPES, TRANSACTION_TRANSFER_NATURE, TRANSACTION_TYPES, isTwoLegTransfer } from '@bt/shared/types';
+import { ACCOUNT_TYPES, TRANSACTION_TRANSFER_NATURE, isTwoLegTransfer } from '@bt/shared/types';
 import { Money } from '@common/types/money';
 import { findOrThrowNotFound } from '@common/utils/find-or-throw-not-found';
 import { t } from '@i18n/index';
@@ -425,7 +425,6 @@ const updateTransferTransaction = async (params: HelperFunctionsArgs) => {
     userId: oppositeTx.userId,
     amount: destinationAmount !== undefined ? destinationAmount : undefined,
     refAmount: baseTransaction.refAmount,
-    transactionType: TRANSACTION_TYPES.income,
     accountId: destinationAccountId,
     note,
     externalUrl,

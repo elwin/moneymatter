@@ -202,6 +202,27 @@ describe('Share membership (S5)', () => {
       });
       expect(recipientAccounts.find((a) => a.id === account.id)).toBeUndefined();
     });
+
+    it('concurrent double revoke of the same member — one succeeds, the other 404s, one notification', async () => {
+      const { account, recipientApp } = await setupAcceptedShare();
+
+      const results = await Promise.all(
+        [0, 1].map(() =>
+          helpers.revokeShareMember({
+            resourceType: RESOURCE_TYPES.account,
+            resourceId: account.id,
+            memberUserId: recipientApp.id,
+            raw: false,
+          }),
+        ),
+      );
+      expect(results.map((r) => r.statusCode).toSorted()).toEqual([204, 404]);
+
+      const recipientNotifs = await Notifications.findAll({
+        where: { userId: recipientApp.id, type: NOTIFICATION_TYPES.shareRevoked },
+      });
+      expect(recipientNotifs).toHaveLength(1);
+    });
   });
 
   describe('GET /share/shared-with-me', () => {

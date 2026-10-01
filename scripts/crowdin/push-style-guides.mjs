@@ -16,6 +16,7 @@ const DRY_RUN = process.argv.includes('--dry-run');
 const GUIDES = [
   { name: 'MoneyMatter – Shared', file: 'shared.md', languageIds: [] },
   { name: 'MoneyMatter – Ukrainian', file: 'uk.md', languageIds: ['uk'] },
+  { name: 'MoneyMatter – Russian and Slovak plurals', file: 'slavic-plurals.md', languageIds: ['ru', 'sk'] },
 ].map((guide) => {
   const text = readFileSync(path.join(GUIDES_DIR, guide.file), 'utf-8');
   return { ...guide, text, bytes: Buffer.byteLength(text) };

@@ -50,7 +50,7 @@ describe('createFindLatestUsdRate', () => {
 
   it('short-circuits USD to 1 regardless of date', () => {
     const find = createFindLatestUsdRate(buildLookup({ datesByQuote: {} }));
-    expect(find('USD', '2024-01-01')).toBe(1);
+    expect(find('USD', '2024-01-01')).toEqual({ rate: 1, approximated: false });
   });
 
   it('returns null when no rates exist for the currency', () => {
@@ -69,7 +69,7 @@ describe('createFindLatestUsdRate', () => {
         },
       }),
     );
-    expect(find('AED', '2024-01-15')).toBe(3.7);
+    expect(find('AED', '2024-01-15')).toEqual({ rate: 3.7, approximated: false });
   });
 
   it('walks back to the most recent prior date when the exact day is missing', () => {
@@ -85,10 +85,10 @@ describe('createFindLatestUsdRate', () => {
       }),
     );
     // 2024-01-15 has no rate; should fall back to 2024-01-12.
-    expect(find('AED', '2024-01-15')).toBe(3.65);
+    expect(find('AED', '2024-01-15')).toEqual({ rate: 3.65, approximated: false });
   });
 
-  it('returns null when every stored date is after the target date', () => {
+  it('returns the earliest stored rate, flagged as approximated, when every stored date is after the target date', () => {
     const find = createFindLatestUsdRate(
       buildLookup({
         datesByQuote: {
@@ -99,7 +99,7 @@ describe('createFindLatestUsdRate', () => {
         },
       }),
     );
-    expect(find('AED', '2024-01-10')).toBeNull();
+    expect(find('AED', '2024-01-10')).toEqual({ rate: 3.6, approximated: true });
   });
 
   it('still returns the latest prior rate when the target is far past the last stored date', () => {
@@ -113,7 +113,7 @@ describe('createFindLatestUsdRate', () => {
         },
       }),
     );
-    expect(find('AED', '2025-12-31')).toBe(3.65);
+    expect(find('AED', '2025-12-31')).toEqual({ rate: 3.65, approximated: false });
   });
 });
 
@@ -122,19 +122,27 @@ describe('createGetExchangeRate', () => {
     userBaseCurrencyCode,
     userRates = new Map<string, number>(),
     findLatestUsdRate,
+    approximatedQuotes = [],
   }: {
     userBaseCurrencyCode: string;
     userRates?: Map<string, number>;
     findLatestUsdRate: (quoteCode: string, dateStr: string) => number | null;
+    /** Quote codes whose stubbed rate is reported as the earliest-rate approximation. */
+    approximatedQuotes?: string[];
   }) => {
     const missingRateCurrencies: string[] = [];
+    const approximatedRateCurrencies: string[] = [];
     const get = createGetExchangeRate({
       userBaseCurrencyCode,
       userRatesMap: userRates,
-      findLatestUsdRate,
-      onMissingRate: (code) => missingRateCurrencies.push(code),
+      findLatestUsdRate: (quoteCode, dateStr) => {
+        const rate = findLatestUsdRate(quoteCode, dateStr);
+        return rate === null ? null : { rate, approximated: approximatedQuotes.includes(quoteCode) };
+      },
+      onMissingRate: ({ currencyCode, approximated }) =>
+        (approximated ? approximatedRateCurrencies : missingRateCurrencies).push(currencyCode),
     });
-    return { get, missingRateCurrencies };
+    return { get, missingRateCurrencies, approximatedRateCurrencies };
   };
 
   it('short-circuits the user base currency to 1', () => {
@@ -199,4 +207,21 @@ describe('createGetExchangeRate', () => {
     expect(get('EUR', '2024-01-01')).toBe(1);
     expect(missingRateCurrencies).toEqual(['EUR']);
   });
+
+  it.each([
+    { leg: 'value currency', approximatedQuotes: ['EUR'] },
+    { leg: 'user base currency', approximatedQuotes: ['AED'] },
+  ])(
+    'keeps the cross-rate and reports the currency as approximated when the $leg uses its earliest rate',
+    ({ approximatedQuotes }) => {
+      const { get, missingRateCurrencies, approximatedRateCurrencies } = makeGetExchangeRate({
+        userBaseCurrencyCode: 'AED',
+        findLatestUsdRate: (q) => (q === 'AED' ? 4 : q === 'EUR' ? 2 : null),
+        approximatedQuotes,
+      });
+      expect(get('EUR', '2024-01-01')).toBe(2);
+      expect(approximatedRateCurrencies).toEqual(['EUR']);
+      expect(missingRateCurrencies).toEqual([]);
+    },
+  );
 });
