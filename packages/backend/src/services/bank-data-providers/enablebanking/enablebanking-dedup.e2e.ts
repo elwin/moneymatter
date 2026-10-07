@@ -10,9 +10,12 @@ import { Money } from '@common/types/money';
 import { afterEach, beforeEach, describe, expect, it } from '@jest/globals';
 import Transactions from '@models/transactions.model';
 import * as helpers from '@tests/helpers';
+import { useSelfHost } from '@tests/helpers/self-host';
 import { FixedTransaction, MOCK_IDENTIFICATION_HASH_1 } from '@tests/mocks/enablebanking/data';
 
 import { ReferenceNumberScheme } from './types';
+
+useSelfHost();
 
 /**
  * E2E tests for the Enable Banking transaction dedup improvements.
@@ -1765,6 +1768,14 @@ describe('Enable Banking dedup improvements (E2E)', () => {
       expect(requested).not.toBeNull();
       expect(requested!.dateFrom).toBe(today);
       expect(requested!.dateFrom! <= requested!.dateTo!).toBe(true);
+    });
+
+    it('asks for the longest available history on the initial sync only', async () => {
+      const { connectionId, accountId } = await setupConnectionWithAccount();
+      expect(helpers.enablebanking.lastTransactionsQuery()!.strategy).toBe('longest');
+
+      await helpers.bankDataProviders.syncTransactionsForAccount({ connectionId, accountId, raw: true });
+      expect(helpers.enablebanking.lastTransactionsQuery()!.strategy).toBeNull();
     });
   });
 

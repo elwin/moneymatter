@@ -137,6 +137,16 @@ describe('Patch user settings', () => {
     expect((await helpers.getUserSettings({ raw: true })).ui?.transactionForm?.mapPicker).toBe(true);
   });
 
+  it('persists sidebarNav per key, leaves unset keys absent, rejects a non-boolean', async () => {
+    await helpers.patchUserSettings({ raw: true, patch: { sidebarNav: { venture: false } } });
+    const patched = await helpers.patchUserSettings({ raw: true, patch: { sidebarNav: { loans: false } } });
+    expect(patched.sidebarNav).toStrictEqual({ venture: false, loans: false });
+
+    const rejected = await helpers.patchUserSettings({ patch: { sidebarNav: { venture: 'no' } } });
+    expect(rejected.statusCode).toBe(ERROR_CODES.ValidationError);
+    expect((await helpers.getUserSettings({ raw: true })).sidebarNav).toStrictEqual({ venture: false, loans: false });
+  });
+
   it('persists ui.transactionForm.defaultPaymentType and rejects an unknown type', async () => {
     const patched = await helpers.patchUserSettings({
       raw: true,

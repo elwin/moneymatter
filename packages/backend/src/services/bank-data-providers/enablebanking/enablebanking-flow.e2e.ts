@@ -7,6 +7,7 @@ import { connection as dbConnection } from '@models/index';
 import Transactions from '@models/transactions.model';
 import type { TransactionApiResponse } from '@root/serializers/transactions.serializer';
 import * as helpers from '@tests/helpers';
+import { useSelfHost } from '@tests/helpers/self-host';
 import {
   FixedTransaction,
   INVALID_ENABLE_BANKING_APP_ID,
@@ -65,6 +66,8 @@ async function setupActiveConnection(): Promise<{
     accountId: syncedAccounts[0]!.id,
   };
 }
+
+useSelfHost();
 
 describe('Enable Banking Data Provider E2E', () => {
   // Reset mock session counter before each test to ensure predictable behavior

@@ -12,9 +12,11 @@
           <slot name="label-after" />
         </template>
         <div class="relative">
+          <!-- Without a 4-digit-year max, Chrome accepts 6-digit years and never auto-advances past the year segment. -->
           <input
             :value="inputValue"
             type="datetime-local"
+            max="9999-12-31T23:59"
             :disabled="disabled"
             :class="
               cn(

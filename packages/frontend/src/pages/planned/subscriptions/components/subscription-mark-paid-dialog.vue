@@ -7,6 +7,7 @@ import {
 import { VUE_QUERY_GLOBAL_PREFIXES } from '@/common/const';
 import { getAccountDisplayLabel } from '@/common/utils/account-display';
 import ResponsiveDialog from '@/components/common/responsive-dialog.vue';
+import { isConnectedAccount } from '@/components/dialogs/manage-transaction/helpers';
 import AccountSelectField from '@/components/fields/account-select-field.vue';
 import DateField from '@/components/fields/date-field.vue';
 import InputField from '@/components/fields/input-field.vue';
@@ -47,7 +48,7 @@ const queryClient = useQueryClient();
 const invalidateSubscriptionQueries = useInvalidateSubscriptionQueries();
 const { addSuccessNotification, addErrorNotification } = useNotificationCenter();
 const accountsStore = useAccountsStore();
-const { accountsRecord } = storeToRefs(accountsStore);
+const { accountsRecord, txTargetableSourceAccountsActiveFirst } = storeToRefs(accountsStore);
 const { resolveDefaultAccount } = useAccountDropdownPrefs();
 
 const emit = defineEmits<{
@@ -93,8 +94,6 @@ const hasAccount = computed(() => activeSubscription.value?.accountId != null);
 
 /** Whether the account/amount/date fields are shown (booking a real transaction). */
 const isBooking = computed(() => hasAccount.value || recordMode.value === 'transaction');
-
-const allAccounts = computed(() => accountsStore.accounts ?? []);
 
 const selectedAccount = computed(() =>
   selectedAccountId.value ? (accountsRecord.value[selectedAccountId.value] ?? null) : null,
@@ -153,6 +152,7 @@ const confirmLabel = computed(() =>
  * Entry point.
  *  - No account: open the dialog so the user chooses between a plain mark-paid
  *    and booking a real transaction (which needs an account).
+ *  - Bank-connected account: status-only mark-paid; its rows come from the bank sync.
  *  - Fixed same-currency amount: book in one click, no dialog.
  *  - Variable / cross-currency amount: open the dialog to capture the amount.
  */
@@ -162,13 +162,20 @@ async function triggerPay({ subscription, periodId }: { subscription: PayableSub
     activePeriodId.value = periodId;
     recordMode.value = 'mark';
     selectedAccountId.value =
-      resolveDefaultAccount({ accounts: allAccounts.value, fallbackToFirst: false })?.id ?? null;
+      resolveDefaultAccount({ accounts: txTargetableSourceAccountsActiveFirst.value, fallbackToFirst: false })?.id ??
+      null;
     // Seed with the plan's expected amount as a convenience; the user confirms or
     // edits it, and it is booked in the chosen account's currency.
     amount.value = subscription.expectedAmount != null ? String(subscription.expectedAmount) : '';
     paidDate.value = new Date();
     estimate.value = null;
     isDialogOpen.value = true;
+    return;
+  }
+
+  const account = accountsRecord.value[subscription.accountId];
+  if (account && isConnectedAccount({ account })) {
+    markPaid({ id: subscription.id, periodId });
     return;
   }
 
@@ -297,7 +304,7 @@ defineExpose({ triggerPay, isPending });
         <AccountSelectField
           v-if="!hasAccount"
           :model-value="selectedAccount"
-          :accounts="allAccounts"
+          :accounts="txTargetableSourceAccountsActiveFirst"
           :label="$t('dialogs.subscriptionMarkPaid.accountLabel')"
           :placeholder="$t('dialogs.subscriptionMarkPaid.accountPlaceholder')"
           @update:model-value="(account: AccountModel | null) => (selectedAccountId = account?.id ?? null)"

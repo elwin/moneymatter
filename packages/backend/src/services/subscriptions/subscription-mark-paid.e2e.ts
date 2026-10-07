@@ -1,4 +1,5 @@
 import {
+  ACCOUNT_TYPES,
   SUBSCRIPTION_FREQUENCIES,
   SUBSCRIPTION_PERIOD_STATUSES,
   SUBSCRIPTION_TYPES,
@@ -6,6 +7,7 @@ import {
 } from '@bt/shared/types';
 import { generateRandomRecordId } from '@common/lib/record-id-helpers';
 import { describe, expect, it } from '@jest/globals';
+import { ERROR_CODES } from '@js/errors';
 import * as helpers from '@tests/helpers';
 import { addMonths, format } from 'date-fns';
 
@@ -494,6 +496,74 @@ describe('POST /subscriptions/:id/periods/:periodId/pay', () => {
         raw: false,
       });
       expect(res.statusCode).toBe(422);
+    });
+
+    it('rejects create-mode on a bank-connected account but still allows a plain mark-paid', async () => {
+      const bankAccount = await helpers.createAccount({
+        payload: { ...helpers.buildAccountPayload(), type: ACCOUNT_TYPES.monobank },
+        raw: true,
+      });
+      const linkedSub = await helpers.createSubscription({
+        name: 'Bank-linked sub',
+        frequency: SUBSCRIPTION_FREQUENCIES.monthly,
+        startDate: futureDate({ monthsAhead: 1, day: 1 }),
+        dueDate: futureDate({ monthsAhead: 1, day: 1 }),
+        accountId: bankAccount.id,
+        expectedAmount: 10,
+        expectedCurrencyCode: global.BASE_CURRENCY.code,
+        raw: true,
+      });
+      const accountlessSub = await helpers.createSubscription({
+        name: 'Account-less sub',
+        frequency: SUBSCRIPTION_FREQUENCIES.monthly,
+        startDate: futureDate({ monthsAhead: 1, day: 1 }),
+        dueDate: futureDate({ monthsAhead: 1, day: 1 }),
+        expectedAmount: 10,
+        expectedCurrencyCode: global.BASE_CURRENCY.code,
+        raw: true,
+      });
+
+      const linkedDetail = await helpers.getSubscriptionById({ id: linkedSub.id, raw: true });
+      const linkedPeriod = linkedDetail.periods.find((p) => p.status === SUBSCRIPTION_PERIOD_STATUSES.upcoming);
+      const accountlessDetail = await helpers.getSubscriptionById({ id: accountlessSub.id, raw: true });
+      const accountlessPeriod = accountlessDetail.periods.find(
+        (p) => p.status === SUBSCRIPTION_PERIOD_STATUSES.upcoming,
+      );
+
+      const linkedRes = await helpers.markSubscriptionPeriodPaid({
+        id: linkedSub.id,
+        periodId: linkedPeriod!.id,
+        createTransaction: true,
+        raw: false,
+      });
+      expect(linkedRes.statusCode).toBe(ERROR_CODES.ValidationError);
+
+      const pickedRes = await helpers.markSubscriptionPeriodPaid({
+        id: accountlessSub.id,
+        periodId: accountlessPeriod!.id,
+        createTransaction: true,
+        accountId: bankAccount.id,
+        amount: 10,
+        raw: false,
+      });
+      expect(pickedRes.statusCode).toBe(ERROR_CODES.ValidationError);
+
+      const accountlessAfter = await helpers.getSubscriptionById({ id: accountlessSub.id, raw: true });
+      expect(accountlessAfter.accountId).toBeNull();
+      expect(accountlessAfter.periods.find((p) => p.id === accountlessPeriod!.id)!.status).toBe(
+        SUBSCRIPTION_PERIOD_STATUSES.upcoming,
+      );
+
+      const txs = await helpers.getTransactions({ raw: true });
+      expect(txs.filter((tx) => tx.accountId === bankAccount.id)).toEqual([]);
+
+      const markedOnly = await helpers.markSubscriptionPeriodPaid({
+        id: linkedSub.id,
+        periodId: linkedPeriod!.id,
+        raw: true,
+      });
+      expect(markedOnly.status).toBe(SUBSCRIPTION_PERIOD_STATUSES.paid);
+      expect(markedOnly.transactionId).toBeNull();
     });
 
     it('rejects linking the same transaction to a period of a different subscription (422)', async () => {
