@@ -116,6 +116,7 @@
         "dueDateDescription": "Якщо встановлено, цей регулярний платіж отримує розклад платежів, який можна позначати як сплачено кожен платіжний цикл.",
         "maxOccurrencesLabel": "Кількість платежів",
         "maxOccurrencesPlaceholder": "Залиште порожнім для безстрокового",
+        "maxOccurrencesInstallmentPlaceholder": "напр. 12",
         "remindBeforeLabel": "Нагадати перед терміном оплати",
         "remindBeforeHelper": "Нагадування з'являються в застосунку. Увімкніть email нижче, щоб також отримувати їх на пошту. Оберіть до 3.",
         "notifyEmailLabel": "Також надіслати на email",

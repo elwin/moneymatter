@@ -116,6 +116,7 @@
         "dueDateDescription": "When set, this subscription gets a payment schedule you can mark paid each billing cycle.",
         "maxOccurrencesLabel": "Number of installments",
         "maxOccurrencesPlaceholder": "Leave blank for indefinite",
+        "maxOccurrencesInstallmentPlaceholder": "e.g. 12",
         "remindBeforeLabel": "Remind me before due date",
         "remindBeforeHelper": "Reminders show in-app. Enable email below to also get them by email. Pick up to 3.",
         "notifyEmailLabel": "Also email me",
