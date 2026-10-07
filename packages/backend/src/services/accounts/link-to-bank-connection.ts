@@ -14,6 +14,7 @@ import AccountGroup from '@models/accounts-groups/account-groups.model';
 import Accounts, { getAccountById } from '@models/accounts.model';
 import BankDataProviderConnections from '@models/bank-data-provider-connections.model';
 import { namespace } from '@models/connection';
+import Subscriptions from '@models/subscriptions.model';
 import { updateAccount } from '@services/accounts.service';
 import { absorbLinkResidual } from '@services/accounts/absorb-link-residual';
 import { assertNotDerivedBalanceAccount } from '@services/accounts/derived-balance-guard';
@@ -171,6 +172,8 @@ export const linkAccountToBankConnection = withTransaction(
       externalData: updatedExternalData,
       bankDataProviderConnectionId: connectionId,
     });
+
+    await Subscriptions.update({ autoRecord: false }, { where: { accountId, autoRecord: true } });
 
     // Existing transactions keep their current type as an audit trail; only
     // newly synced rows get the provider account type.
