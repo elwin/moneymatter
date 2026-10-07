@@ -21,8 +21,8 @@ on:
 jobs:
   backup:
     runs-on: ubuntu-latest
-    # Only allow letehaha to manually trigger
-    if: ${{ github.event_name != 'workflow_dispatch' || github.actor == 'letehaha' }}
+    # Only allow authorized users to manually trigger
+    if: ${{ github.event_name != 'workflow_dispatch' || github.actor == 'elwin' || github.actor == github.repository_owner || github.actor == 'letehaha' }}
 
     steps:
       - name: Create database backup and upload to R2

@@ -1,4 +1,4 @@
-name: Update images on VPS
+name: Publish Docker images and deploy
 
 on:
   workflow_run:
@@ -7,6 +7,10 @@ on:
       - completed
     branches: [main]
   workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
 
 jobs:
   # Create database backup before deployment
@@ -27,8 +31,8 @@ jobs:
       - name: Check if user is authorized
         if: github.event_name == 'workflow_dispatch'
         run: |
-          if [[ "${{ github.actor }}" != "letehaha" ]]; then
-            echo "Error: Only letehaha can manually trigger this workflow"
+          if [[ "${{ github.actor }}" != "elwin" && "${{ github.actor }}" != "${{ github.repository_owner }}" && "${{ github.actor }}" != "letehaha" ]]; then
+            echo "Error: Only authorized users can manually trigger this workflow"
             exit 1
           fi
           echo "User authorized: ${{ github.actor }}"
@@ -46,12 +50,15 @@ jobs:
     needs: [backup, prepare]
     runs-on: ubuntu-latest
     if: ${{ always() && needs.prepare.result == 'success' }}
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.prepare.outputs.sha }}
 
-      # This image is the self-host image: letehaha/budget-tracker-fe is what
+      # This image is the self-host image: ghcr.io/elwin/moneymatter/frontend is what
       # self-hosters pull. Deployment-specific values (API origin, analytics
       # keys, CSP hosts) belong to whoever runs the container, not to this
       # build — they enter at container start via the entrypoint's runtime
@@ -63,8 +70,6 @@ jobs:
           sentry-project: ${{ secrets.SENTRY_PROJECT }}
           sentry-release: ${{ needs.prepare.outputs.sha }}
           app-commit-hash: ${{ needs.prepare.outputs.sha }}
-          docker-hub-username: ${{ secrets.DOCKER_HUB_USERNAME }}
-          docker-hub-access-token: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
           image-tag: latest,sha-${{ needs.prepare.outputs.sha_short }}
           # Prod VPS is amd64, so build single-arch (fast, native, no QEMU). The
           # actions still accept a `platforms` input — add linux/arm64 here to
@@ -75,6 +80,9 @@ jobs:
     needs: [backup, prepare]
     runs-on: ubuntu-latest
     if: ${{ always() && needs.prepare.result == 'success' }}
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -82,8 +90,6 @@ jobs:
 
       - uses: ./.github/actions/backend-docker-build
         with:
-          docker-hub-username: ${{ secrets.DOCKER_HUB_USERNAME }}
-          docker-hub-access-token: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
           sentry-release: ${{ needs.prepare.outputs.sha }}
           image-tag: latest,sha-${{ needs.prepare.outputs.sha_short }}
           push: 'true'

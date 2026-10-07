@@ -41,4 +41,4 @@ The full workflow lives in the `user-docs` Claude skill (`.claude/skills/user-do
 
 ## Deployment
 
-`.github/workflows/docs.yml` builds the site on PRs that touch `packages/docs/**`. On `main` it pushes `letehaha/budget-tracker-docs` to Docker Hub and calls the `DOKPLOY_DOCS_DEPLOY_WEBHOOK_URL` secret.
+`.github/workflows/docs.yml` builds the site on PRs that touch `packages/docs/**`. On `main` it pushes `ghcr.io/elwin/moneymatter/docs` to GitHub Container Registry and calls the `DOKPLOY_DOCS_DEPLOY_WEBHOOK_URL` secret.

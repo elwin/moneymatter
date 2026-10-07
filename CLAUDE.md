@@ -106,7 +106,7 @@ Other instructions:
    - Do NOT touch i18n files for unrelated work (don't "improve" existing translations, don't reorganize keys, don't bulk-translate English-only strings you encounter) – only add/update keys that the current task requires.
    - If a string's wording is non-obvious (e.g., domain terminology, formal vs. casual tone), ask the user for the copy before delegating to the subagent.
 8. For Chrome extenstion use Brave browser, not Chrome
-9. **Frontend env vars (`VITE_*`) must also be added to CI** – they are inlined at build time. Add as input + envkey in `.github/actions/frontend-docker-build/action.yml`, then pass the secret in `.github/workflows/image-to-docker-hub.yml`.
+9. **Frontend env vars (`VITE_*`) must also be added to CI** – they are inlined at build time. Add as input + envkey in `.github/actions/frontend-docker-build/action.yml`, then pass the secret in `.github/workflows/publish-images.yml`.
 10. **CRITICAL: No Git Commits or Pushes**
     - **NEVER** run `git commit`, `git push`, or any command that creates commits or pushes to remote.
     - The user manages all git operations themselves. No exceptions.

@@ -31,7 +31,7 @@ x-logging: &default-logging
 
 services:
   backend:
-    image: letehaha/budget-tracker-be:${IMAGE_TAG:-latest}
+    image: ghcr.io/elwin/moneymatter/backend:${IMAGE_TAG:-latest}
     restart: unless-stopped
     networks: [budget-tracker]
     # Internal-only: the frontend container reaches it over the `budget-tracker`
@@ -83,7 +83,7 @@ services:
     logging: *default-logging
 
   frontend:
-    image: letehaha/budget-tracker-fe:${IMAGE_TAG:-latest}
+    image: ghcr.io/elwin/moneymatter/frontend:${IMAGE_TAG:-latest}
     restart: unless-stopped
     networks:
       budget-tracker:
