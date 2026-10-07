@@ -12,7 +12,7 @@ import {
 } from '@lucide/vue';
 import { watch } from 'vue';
 
-import { SIDEBAR_NAV_CHILDREN } from './nav-items';
+import { SIDEBAR_NAV_CHILDREN, useAccountsNavChildren } from './nav-items';
 import { useSidebarNavCollapse } from './use-nav-collapse';
 import { useSidebarNavRoutes } from './use-nav-routes';
 
@@ -25,6 +25,7 @@ const navIconActive = 'text-primary-text';
 
 const { isAccountsOpen, isTransactionsOpen, isPlannedOpen } = useSidebarNavCollapse();
 const { isAccountsRoute, isTransactionsRoute, isPlannedRoute } = useSidebarNavRoutes();
+const accountsNavChildren = useAccountsNavChildren();
 
 watch(
   isAccountsRoute,
@@ -72,6 +73,17 @@ watch(
       </ui-button>
     </router-link>
   </template>
+  <router-link v-else-if="accountsNavChildren.length === 1" :to="{ name: ROUTES_NAMES.accounts }">
+    <ui-button
+      variant="ghost"
+      as="span"
+      :class="[navItemBase, 'justify-start', isAccountsRoute && navItemActive]"
+      size="default"
+    >
+      <LayersIcon :class="[navIconBase, isAccountsRoute && navIconActive]" />
+      <span> {{ $t('navigation.accounts') }} </span>
+    </ui-button>
+  </router-link>
   <Collapsible v-else v-model:open="isAccountsOpen">
     <CollapsibleTrigger class="w-full">
       <ui-button
@@ -90,7 +102,7 @@ watch(
     <CollapsibleContent>
       <div class="border-border/40 mt-1 ml-2 grid gap-0.5 border-l pl-2">
         <router-link
-          v-for="child in SIDEBAR_NAV_CHILDREN.accounts"
+          v-for="child in accountsNavChildren"
           :key="child.routeName"
           v-slot="{ isActive }"
           :to="{ name: child.routeName }"

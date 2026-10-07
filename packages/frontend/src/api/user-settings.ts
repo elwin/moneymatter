@@ -22,6 +22,13 @@ export interface DashboardWidgetConfig {
  */
 export type SidebarSectionsConfig = endpointsTypes.SidebarSectionsConfig;
 
+/** Optional links under the sidebar's Accounts nav group. Each is visible when unset. */
+export interface SidebarNavConfig {
+  loans?: boolean;
+  investments?: boolean;
+  venture?: boolean;
+}
+
 export type TransactionsView = 'list' | 'table';
 
 interface TransactionsTableSettings {
@@ -115,6 +122,7 @@ export interface UserSettingsSchema {
   /** Store bank transactions before they are booked. Off when unset. */
   importPendingBankTransactions?: boolean;
   sidebarSections?: SidebarSectionsConfig;
+  sidebarNav?: SidebarNavConfig;
   payeeExtractionUsesDescription?: boolean;
   /** Transactions sharing a raw merchant name before a Payee is auto-created. Defaults to 2. */
   payeePromotionThreshold?: 1 | 2 | 3;
