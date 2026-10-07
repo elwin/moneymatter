@@ -259,6 +259,7 @@
     "transactionsNoneInPeriod": "Провайдер не повернув жодної транзакції за цей період.",
     "apiError": "Помилка API {{provider}}: {{message}}",
     "currencySelectionRequired": "Рахунок «{{account}}» не має валюти, повідомленої банком — оберіть для нього валюту перед підключенням.",
+    "providerNotAvailable": "Цей провайдер недоступний для нових підключень.",
     "monobank": {
       "invalidCredentialsFormat": "Недійсний формат облікових даних для Monobank",
       "invalidApiToken": "Недійсний API-токен Monobank",

@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals
 import ResourceShares from '@models/resource-shares.model';
 import Transactions from '@models/transactions.model';
 import * as helpers from '@tests/helpers';
+import { useSelfHost } from '@tests/helpers/self-host';
 import { FixedTransaction, MOCK_IDENTIFICATION_HASH_1 } from '@tests/mocks/enablebanking/data';
 import { MONOBANK_URLS_MOCK, getMonobankTransactionsMock } from '@tests/mocks/monobank/mock-api';
 import { addDays, format, startOfDay, subDays } from 'date-fns';
@@ -133,6 +134,8 @@ async function setupConnectionWithAccount(): Promise<{
     accountId: syncedAccounts[0]!.id,
   };
 }
+
+useSelfHost();
 
 describe('Planned transactions – merge on sync', () => {
   describe('Monobank', () => {

@@ -11,6 +11,7 @@ import {
 import { NONEXISTENT_ID } from '@common/lib/record-id-helpers';
 import { afterEach, beforeEach, describe, expect, it } from '@jest/globals';
 import * as helpers from '@tests/helpers';
+import { useSelfHost } from '@tests/helpers/self-host';
 import {
   FixedTransaction,
   MOCK_IDENTIFICATION_HASH_1,
@@ -188,6 +189,8 @@ const historyEvents = async () =>
     survivorId: event.survivor?.id ?? null,
     ids: event.transactions.map((tx) => tx.id).toSorted(),
   }));
+
+useSelfHost();
 
 describe('Transactions reconciliation', () => {
   beforeEach(async () => {
