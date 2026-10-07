@@ -2,19 +2,28 @@ name: Build backend Docker image
 description: Build and optionally push the backend Docker image
 
 inputs:
-  docker-hub-username:
-    description: 'DOCKER_HUB_USERNAME'
+  registry:
+    description: 'Container registry to log in to (e.g. ghcr.io)'
     required: false
-    default: 'local'
-  docker-hub-access-token:
-    description: 'DOCKER_HUB_ACCESS_TOKEN'
+    default: 'ghcr.io'
+  registry-username:
+    description: 'Username for container registry login'
     required: false
+    default: ''
+  registry-token:
+    description: 'Password or token for container registry login'
+    required: false
+    default: ''
+  image-name:
+    description: 'Docker image name (without tag)'
+    required: false
+    default: 'ghcr.io/elwin/moneymatter/backend'
   sentry-release:
     description: 'SENTRY_RELEASE - Release version (git SHA) for Sentry'
     required: false
     default: ''
   image-tag:
-    description: 'Docker image tag(s). Comma/space-separated for multiple (e.g. "latest,sha-abc1234"); each becomes a full ref on the be repo.'
+    description: 'Docker image tag(s). Comma/space-separated for multiple (e.g. "latest,sha-abc1234"); each becomes a full ref.'
     required: false
     default: 'latest'
   platforms:
@@ -25,6 +34,14 @@ inputs:
     description: Specifies if docker result should be pushed
     required: false
     default: 'false'
+  docker-hub-username:
+    description: 'Deprecated: DOCKER_HUB_USERNAME'
+    required: false
+    default: ''
+  docker-hub-access-token:
+    description: 'Deprecated: DOCKER_HUB_ACCESS_TOKEN'
+    required: false
+    default: ''
 
 outputs:
   docker-build-digest:
@@ -34,12 +51,13 @@ outputs:
 runs:
   using: composite
   steps:
-    - name: Login to Docker Hub
+    - name: Login to Container Registry
       if: inputs.push == 'true'
       uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
       with:
-        username: ${{ inputs.docker-hub-username }}
-        password: ${{ inputs.docker-hub-access-token }}
+        registry: ${{ inputs.registry }}
+        username: ${{ inputs.registry-username || inputs.docker-hub-username || github.actor }}
+        password: ${{ inputs.registry-token || inputs.docker-hub-access-token || github.token }}
 
     # QEMU registers binfmt handlers so buildx can emulate foreign
     # architectures. Only needed when building for an arch other than the
@@ -59,7 +77,7 @@ runs:
       id: tags
       shell: bash
       env:
-        IMAGE: ${{ inputs.docker-hub-username }}/budget-tracker-be
+        IMAGE: ${{ inputs.image-name }}
         TAG_LIST: ${{ inputs.image-tag }}
       run: |
         {
@@ -81,5 +99,7 @@ runs:
         load: ${{ inputs.push != 'true' }}
         platforms: ${{ inputs.platforms }}
         tags: ${{ steps.tags.outputs.refs }}
+        labels: |
+          org.opencontainers.image.source=https://github.com/elwin/moneymatter
         build-args: |
           SENTRY_RELEASE=${{ inputs.sentry-release }}

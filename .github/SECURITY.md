@@ -24,8 +24,8 @@ reproduced it yourself against a real instance before reporting.
 ## Scope
 
 - The hosted service at `moneymatter.app`
-- The published Docker images `letehaha/budget-tracker-be` and
-  `letehaha/budget-tracker-fe`
+- The published Docker images `ghcr.io/elwin/moneymatter/backend` and
+  `ghcr.io/elwin/moneymatter/frontend`
 - This repository's source code
 
 Out of scope:

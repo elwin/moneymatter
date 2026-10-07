@@ -136,8 +136,8 @@ Start the stack from the `self-hosting/` folder:
 docker compose up -d
 ```
 
-This pulls the published images (`letehaha/budget-tracker-fe`,
-`letehaha/budget-tracker-be`, `letehaha/currency-rates-api`, `postgres:16`,
+This pulls the published images (`ghcr.io/elwin/moneymatter/frontend`,
+`ghcr.io/elwin/moneymatter/backend`, `letehaha/currency-rates-api`, `postgres:16`,
 `redis:7`) and starts everything. The backend runs database migrations on boot
 before it starts serving, so its healthcheck stays red for the first
 30–60 seconds – that's expected.

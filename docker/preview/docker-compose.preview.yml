@@ -1,6 +1,6 @@
 services:
   frontend:
-    image: letehaha/budget-tracker-fe:pr-${PR_NUMBER}
+    image: ghcr.io/elwin/moneymatter/frontend:pr-${PR_NUMBER}
     container_name: preview-pr-${PR_NUMBER}-frontend
     restart: unless-stopped
     # Deployment config enters here at container start (read by the image's
@@ -33,7 +33,7 @@ services:
       - 'traefik.http.services.preview-pr-${PR_NUMBER}-fe.loadbalancer.server.port=80'
 
   backend:
-    image: letehaha/budget-tracker-be:pr-${PR_NUMBER}
+    image: ghcr.io/elwin/moneymatter/backend:pr-${PR_NUMBER}
     container_name: preview-pr-${PR_NUMBER}-backend
     restart: unless-stopped
     env_file: .env
@@ -61,7 +61,7 @@ services:
       - 'traefik.http.services.preview-pr-${PR_NUMBER}-be.loadbalancer.server.port=8080'
 
   docs:
-    image: letehaha/budget-tracker-docs:pr-${PR_NUMBER}
+    image: ghcr.io/elwin/moneymatter/docs:pr-${PR_NUMBER}
     container_name: preview-pr-${PR_NUMBER}-docs
     restart: unless-stopped
     networks:

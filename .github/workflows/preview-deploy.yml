@@ -6,6 +6,8 @@ on:
 
 permissions:
   pull-requests: write
+  contents: read
+  packages: write
 
 concurrency:
   group: preview-${{ github.event.pull_request.number }}
@@ -77,24 +79,29 @@ jobs:
         with:
           app-commit-hash: ${{ github.sha }}
           image-tag: pr-${{ env.PR_NUMBER }}
-          docker-hub-username: ${{ secrets.DOCKER_HUB_USERNAME }}
-          docker-hub-access-token: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
           push: 'true'
 
       - name: Build and push backend image
         uses: ./.github/actions/backend-docker-build
         with:
           image-tag: pr-${{ env.PR_NUMBER }}
-          docker-hub-username: ${{ secrets.DOCKER_HUB_USERNAME }}
-          docker-hub-access-token: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
           push: 'true'
+
+      - name: Login to Container Registry
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push docs image
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: ./packages/docs
           push: true
-          tags: letehaha/budget-tracker-docs:pr-${{ env.PR_NUMBER }}
+          tags: ghcr.io/elwin/moneymatter/docs:pr-${{ env.PR_NUMBER }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/elwin/moneymatter
 
       # ── Copy compose file to VPS ──────────────────────────────────────
       - name: Create PR directory on VPS
