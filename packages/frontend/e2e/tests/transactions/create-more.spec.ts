@@ -254,6 +254,11 @@ test.describe('Create more: keep the Add dialog open between entries', () => {
     await waitForSuccessToast({ page });
     await expectNextEntryForm();
 
+    // The toast lands over the Create button, under the cursor parked there by the first click;
+    // a hovered toast never auto-dismisses, so the cursor has to leave before the next save.
+    await page.mouse.move(0, 0);
+    await expect(page.locator('[data-sonner-toast]')).toBeHidden({ timeout: 15_000 });
+
     await ui.amountInput.fill('40');
     await ui.createButton.click();
     await expect.poll(async () => (await listAccountTransactions({ api, accountId: transferFromId })).length).toBe(2);
