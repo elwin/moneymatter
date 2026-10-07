@@ -12,6 +12,8 @@ import UiButton from '@/components/lib/ui/button/Button.vue';
 import * as Select from '@/components/lib/ui/select';
 import { NotificationType, useNotificationCenter } from '@/components/notification-center';
 import { useCurrencyName } from '@/composable';
+import { useFormValidation } from '@/composable/form-validator';
+import * as validators from '@/js/helpers/validators';
 import { trackAnalyticsEvent } from '@/lib/posthog';
 import { useCurrenciesStore } from '@/stores';
 import { useOnboardingStore } from '@/stores/onboarding';
@@ -60,6 +62,11 @@ const form = reactive<{
   logo: null,
 });
 
+const { isFormValid, touchField, getFieldErrorMessage } = useFormValidation(
+  { form },
+  { form: { name: { required: validators.required } } },
+);
+
 const logoPlaceholderAccount = computed(() => ({
   name: form.name,
   logoDomain: null,
@@ -77,12 +84,12 @@ const selectableAccountCategories = computed(() =>
 const createAccountMutation = useMutation({ mutationFn: createAccount });
 
 const submit = async () => {
-  if (createAccountMutation.isPending.value) return;
+  if (createAccountMutation.isPending.value || !isFormValid()) return;
 
   try {
     await createAccountMutation.mutateAsync({
       currencyCode: form.currencyCode,
-      name: form.name,
+      name: form.name.trim(),
       accountCategory: form.accountCategory,
       creditLimit: form.creditLimit,
       initialBalance: form.initialBalance,
@@ -128,6 +135,8 @@ const submit = async () => {
           v-model="form.name"
           :label="$t('forms.createAccount.nameLabel')"
           :placeholder="$t('forms.createAccount.namePlaceholder')"
+          :error-message="getFieldErrorMessage('form.name')"
+          @blur="touchField('form.name')"
         />
       </div>
       <LogoSquareField
