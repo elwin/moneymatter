@@ -7,6 +7,8 @@ FROM --platform=$BUILDPLATFORM node:24.21.0 AS build-stage
 
 WORKDIR /app
 
+ENV NODE_OPTIONS="--max-old-space-size=4096"
+
 # Deployment configuration (API origin, analytics keys, CSP hosts) enters at
 # container start via the entrypoint's runtime env — it is NOT baked here.
 # Build args carry only build-identity values and the Sentry source-map upload

@@ -94,8 +94,27 @@ jobs:
           image-tag: latest,sha-${{ needs.prepare.outputs.sha_short }}
           push: 'true'
 
+  build-combined:
+    needs: [backup, prepare, build-frontend, build-backend]
+    runs-on: ubuntu-latest
+    if: ${{ always() && needs.prepare.result == 'success' && needs.build-frontend.result == 'success' && needs.build-backend.result == 'success' }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+
+      - uses: ./.github/actions/combined-docker-build
+        with:
+          frontend-image: ghcr.io/elwin/moneymatter/frontend:sha-${{ needs.prepare.outputs.sha_short }}
+          backend-image: ghcr.io/elwin/moneymatter/backend:sha-${{ needs.prepare.outputs.sha_short }}
+          image-tag: latest,sha-${{ needs.prepare.outputs.sha_short }}
+          push: 'true'
+
   deploy:
-    needs: [build-frontend, build-backend]
+    needs: [build-frontend, build-backend, build-combined]
     runs-on: ubuntu-latest
     steps:
       - name: Trigger Dokploy deployment
