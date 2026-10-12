@@ -29,6 +29,7 @@ CSP_EXTRA_ANALYTICS="${CSP_EXTRA_ANALYTICS:-}"
 # nginx runs unprivileged here; hosts that keep ports below 1024 root-only
 # (Synology Container Manager) need a high port such as 8080.
 LISTEN_PORT="${LISTEN_PORT:-80}"
+FRONTEND_ROOT="${FRONTEND_ROOT:-/app}"
 
 # --- Validation -------------------------------------------------------------
 
@@ -67,7 +68,7 @@ js_escape() {
   printf '%s' "$1" | tr -d '\r\n' | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'
 }
 
-cat > /app/config.js <<EOF
+cat > "${FRONTEND_ROOT}/config.js" <<EOF
 window.__APP_CONFIG__ = {
   API_HTTP: "$(js_escape "$API_HTTP")",
   API_VER: "$(js_escape "$API_VER")",
@@ -98,8 +99,8 @@ LANDING_REDIRECT=""
 
 # envsubst only touches the named placeholders; every other `$var` in the
 # template is an nginx runtime variable and must be left intact.
-export CSP_EXTRA_CONNECT CSP_EXTRA_FORM_ACTION CSP_EXTRA_ANALYTICS LANDING_REDIRECT LISTEN_PORT
-envsubst '$CSP_EXTRA_CONNECT $CSP_EXTRA_FORM_ACTION $CSP_EXTRA_ANALYTICS $LANDING_REDIRECT $LISTEN_PORT' \
+export CSP_EXTRA_CONNECT CSP_EXTRA_FORM_ACTION CSP_EXTRA_ANALYTICS LANDING_REDIRECT LISTEN_PORT FRONTEND_ROOT
+envsubst '$CSP_EXTRA_CONNECT $CSP_EXTRA_FORM_ACTION $CSP_EXTRA_ANALYTICS $LANDING_REDIRECT $LISTEN_PORT $FRONTEND_ROOT' \
   < /etc/nginx/templates/nginx.conf.template \
   > /etc/nginx/nginx.conf
 
@@ -123,6 +124,14 @@ location /api/ {
   # Backend streams Server-Sent Events; buffering would stall them.
   proxy_buffering off;
   proxy_read_timeout 3600s;
+}
+location = /health {
+  proxy_pass ${BACKEND_URL};
+  proxy_http_version 1.1;
+  proxy_set_header Host \$host;
+  proxy_set_header X-Real-IP \$remote_addr;
+  proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+  proxy_set_header X-Forwarded-Proto \$scheme;
 }
 EOF
 else
@@ -219,22 +228,22 @@ else
   # backend under two hosts: api. for the authorization server, mcp. for the
   # resource. A self-host has one backend origin, so both collapse to MCP_BASE_URL.
   if [ -n "$MCP_BASE_URL" ] && [ "${MCP_BASE_URL%/}" != "https://mcp.moneymatter.app" ]; then
-    for doc in /app/.well-known/oauth-authorization-server /app/.well-known/oauth-protected-resource; do
+    for doc in "${FRONTEND_ROOT}"/.well-known/oauth-authorization-server "${FRONTEND_ROOT}"/.well-known/oauth-protected-resource; do
       sed -e "s|https://mcp\.moneymatter\.app|${MCP_BASE_URL%/}|g" -e "s|https://api\.moneymatter\.app|${MCP_BASE_URL%/}|g" "$doc" > "$doc.tmp"
       mv "$doc.tmp" "$doc"
     done
   fi
 
-  cat > "$OAUTH_MCP_INCLUDE" <<'EOF'
+  cat > "$OAUTH_MCP_INCLUDE" <<EOF
 location = /.well-known/oauth-authorization-server {
-  root /app;
+  root ${FRONTEND_ROOT};
   default_type "application/json";
   add_header Access-Control-Allow-Origin "*" always;
   add_header Cache-Control "public, max-age=3600" always;
   add_header X-Content-Type-Options "nosniff" always;
 }
 location = /.well-known/oauth-authorization-server/mcp {
-  root /app;
+  root ${FRONTEND_ROOT};
   try_files /.well-known/oauth-authorization-server =404;
   default_type "application/json";
   add_header Access-Control-Allow-Origin "*" always;
@@ -242,14 +251,14 @@ location = /.well-known/oauth-authorization-server/mcp {
   add_header X-Content-Type-Options "nosniff" always;
 }
 location = /.well-known/oauth-protected-resource {
-  root /app;
+  root ${FRONTEND_ROOT};
   default_type "application/json";
   add_header Access-Control-Allow-Origin "*" always;
   add_header Cache-Control "public, max-age=3600" always;
   add_header X-Content-Type-Options "nosniff" always;
 }
 location = /.well-known/oauth-protected-resource/mcp {
-  root /app;
+  root ${FRONTEND_ROOT};
   try_files /.well-known/oauth-protected-resource =404;
   default_type "application/json";
   add_header Access-Control-Allow-Origin "*" always;
