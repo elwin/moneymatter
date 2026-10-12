@@ -12,7 +12,20 @@
     "no-underscore-dangle": [
       "warn",
       {
-        "allow": ["_shareContext", "_bankProviderType", "_previousDataValues"]
+        "allow": [
+          "_shareContext",
+          "_bankProviderType",
+          "_previousDataValues",
+          "__filename",
+          "__dirname",
+          "__isMoney__",
+          "_router",
+          "_data",
+          "_exhaustiveCheck",
+          "_modelsSatisfyResolvable",
+          "_cents",
+          "account_"
+        ]
       }
     ],
     "no-unused-vars": [
@@ -24,6 +37,9 @@
         "varsIgnorePattern": "^_"
       }
     ],
+    "unicorn/consistent-function-scoping": "off",
+    "unicorn/no-array-sort": "off",
+    "unicorn/no-array-reverse": "off",
     "unicorn/no-useless-fallback-in-spread": "warn",
     "unicorn/no-new-array": "warn",
     "unicorn/no-useless-spread": "warn",
