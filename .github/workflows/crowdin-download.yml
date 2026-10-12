@@ -19,9 +19,24 @@ jobs:
   download:
     runs-on: ubuntu-latest
     steps:
+      - name: Check required Crowdin configuration
+        id: check-secrets
+        env:
+          CROWDIN_PROJECT_ID: ${{ secrets.CROWDIN_PROJECT_ID }}
+          CROWDIN_PERSONAL_TOKEN: ${{ secrets.CROWDIN_PERSONAL_TOKEN }}
+        run: |
+          if [ -z "$CROWDIN_PROJECT_ID" ] || [ -z "$CROWDIN_PERSONAL_TOKEN" ]; then
+            echo "::notice::Crowdin download skipped: Required secrets (CROWDIN_PROJECT_ID, CROWDIN_PERSONAL_TOKEN) are not configured."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.check-secrets.outputs.configured == 'true'
 
       - uses: crowdin/github-action@9c23991700c0ec5256fd41089b9d9d7d540e424e # v3.3.0
+        if: steps.check-secrets.outputs.configured == 'true'
         with:
           upload_sources: false
           upload_translations: false

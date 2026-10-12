@@ -25,7 +25,22 @@ jobs:
     if: ${{ github.event_name != 'workflow_dispatch' || github.actor == 'elwin' || github.actor == github.repository_owner || github.actor == 'letehaha' }}
 
     steps:
+      - name: Check required backup configuration
+        id: check-secrets
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+        run: |
+          if [ -z "$VPS_HOST" ] || [ -z "$VPS_SSH_KEY" ] || [ -z "$R2_ENDPOINT" ]; then
+            echo "::notice::Database backup skipped: Required secrets (VPS_HOST, VPS_SSH_KEY, R2_ENDPOINT) are not configured."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Create database backup and upload to R2
+        if: steps.check-secrets.outputs.configured == 'true'
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         env:
           R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
@@ -106,6 +121,7 @@ jobs:
             echo "🎉 Database backup completed successfully!"
 
       - name: Cleanup old backups (older than 60 days)
+        if: steps.check-secrets.outputs.configured == 'true'
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         env:
           R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
