@@ -261,7 +261,7 @@ const createAccountsForConnection = withTransaction(
           creditLimit: creditLimitCents,
           refCreditLimit,
           externalId: providerAccount.externalId,
-          externalData: { ...(providerAccount.metadata || {}), ...(currencyFallback && { currencyFallback }) },
+          externalData: { ...providerAccount.metadata, ...(currencyFallback && { currencyFallback }) },
           bankDataProviderConnectionId: connectionId,
         });
         createdAccounts.push(newAccount);

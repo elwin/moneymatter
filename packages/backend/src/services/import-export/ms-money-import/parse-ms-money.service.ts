@@ -137,7 +137,7 @@ function createTableReader({ reader }: { reader: MDBReader }) {
     if (missingColumns.length) gaps.push({ table: name, tableMissing: false, missingColumns });
 
     const wanted = columns?.filter((column) => available.has(column));
-    return table.getData({ ...(wanted?.length ? { columns: wanted } : {}) }) as T[];
+    return table.getData(wanted?.length ? { columns: wanted } : {}) as T[];
   };
 
   return { read, gaps };
