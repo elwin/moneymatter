@@ -27,5 +27,3 @@
 ## AI assistance
 
 <!-- None / light / heavy, and which tool. You understand and have run every line in this PR (see CONTRIBUTING.md). -->
-
-<!-- First PR? The CLA bot will ask you to sign once with a single comment. -->
